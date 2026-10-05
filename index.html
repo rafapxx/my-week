@@ -8,6 +8,9 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Неделя">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Doto:wght@600;800&display=swap">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="icon-180.png">
 <link rel="icon" href="icon-192.png">
@@ -129,6 +132,30 @@ input::-webkit-calendar-picker-indicator{filter:invert(1);opacity:.5}
 .login .save{margin-left:0}
 .boot{min-height:100vh;display:grid;place-items:center;color:var(--dim)}
 
+
+/* ---- Nothing-style layer: dot-matrix digits + white neon ---- */
+:root{--dotf:"Doto",ui-monospace,Menlo,monospace;--neon:#fff;--glow:0 0 6px rgba(255,255,255,.8),0 0 18px rgba(255,255,255,.35)}
+.range,.tab b,.hd b,.times span,.ev .t,.wheel div,.fld input,.picker .colon{font-family:var(--dotf);font-weight:800;letter-spacing:.02em}
+.range{font-size:1.15rem}
+.times span{font-size:.8rem}
+.ev .t{font-size:.78rem}
+.tab b{font-size:1.15rem}
+.wheel div{font-size:1.35rem}
+.tab.sel{background:var(--neon);box-shadow:var(--glow)}
+.tab.today:not(.sel) b,.hc.today .hd b,.day.today .lab b{color:var(--neon);text-shadow:var(--glow);text-decoration:none}
+.dot[data-s="live"]{background:var(--neon);box-shadow:var(--glow)}
+.col{background-image:linear-gradient(var(--line-h) 1px,transparent 1px),radial-gradient(circle,#3a3a3a 1px,transparent 1.3px);
+  background-size:100% var(--h),7px calc(var(--h) / 2);background-position:0 0,0 calc(var(--h) / -4)}
+.now{background:var(--neon);box-shadow:0 0 6px #fff,0 0 16px rgba(255,255,255,.6)}
+.now::before{background:var(--now);box-shadow:0 0 8px var(--now),0 0 16px var(--now)}
+.ev{border-color:rgba(255,255,255,.3);box-shadow:inset 0 0 10px rgba(255,255,255,.05)}
+.ev:hover{border-color:var(--neon);box-shadow:var(--glow)}
+.ev.done .ck{box-shadow:0 0 6px #fff}
+.fab{background:var(--neon);box-shadow:0 0 12px rgba(255,255,255,.7),0 0 36px rgba(255,255,255,.3)}
+.save{box-shadow:0 0 12px rgba(255,255,255,.4)}
+.picker::before{border-color:rgba(255,255,255,.45);box-shadow:0 0 12px rgba(255,255,255,.18)}
+.fld input.act{border-color:var(--neon);box-shadow:0 0 10px rgba(255,255,255,.3)}
+.sw input:checked{background:var(--neon);box-shadow:var(--glow)}
 @media (max-width:700px){
   .tabs{display:grid}
   :root{--h:56px;--tc:40px}
@@ -503,7 +530,7 @@ onAuthStateChanged(auth,user=>{
 });
 
 /* ---------- offline copy + auto-update ---------- */
-const BUILD="20261005192122";
+const BUILD="20261005193337";
 async function checkVersion(){
   if(!navigator.onLine)return;
   try{const r=await fetch("version.txt?t="+Date.now(),{cache:"no-store"});if(!r.ok)return;

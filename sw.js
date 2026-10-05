@@ -1,6 +1,6 @@
 // Offline copy of the app. Own files: network first (always fresh when online), cache when offline.
 // Firebase SDK files from gstatic: cache first (they never change for a pinned version).
-const VERSION = "v2";
+const VERSION = "v3";
 const CACHE = "my-week-" + VERSION;
 const OWN = ["./", "index.html", "manifest.webmanifest", "icon-180.png", "icon-192.png", "icon-512.png"];
 const SDK = "https://www.gstatic.com/firebasejs/11.0.2/";
@@ -22,7 +22,7 @@ self.addEventListener("fetch", e => {
   if (req.method !== "GET") return;
   const url = new URL(req.url);
 
-  if (url.href.startsWith(SDK)) {
+  if (url.href.startsWith(SDK) || url.hostname === "fonts.googleapis.com" || url.hostname === "fonts.gstatic.com") {
     e.respondWith(
       caches.match(req).then(hit => hit || fetch(req).then(res => {
         if (res.ok) { const copy = res.clone(); caches.open(CACHE).then(c => c.put(req, copy)); }
