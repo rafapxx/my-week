@@ -182,6 +182,15 @@ input,select,button{font-weight:inherit}
 .col{-webkit-touch-callout:none;-webkit-user-select:none;user-select:none}
 .ghost{position:absolute;left:2px;right:2px;z-index:1;border:1px dashed var(--neon,#fff);border-radius:6px;background:rgba(255,255,255,.08);
   font-size:.7rem;color:var(--fg);padding:2px 6px;pointer-events:none;box-shadow:var(--glow)}
+
+/* quick add line */
+.quick{display:flex;gap:8px;padding-bottom:8px}
+.quick input{flex:1;min-width:0;padding:9px 12px;border-radius:10px}
+.quick input:focus{border-color:var(--neon,#fff);box-shadow:0 0 10px rgba(255,255,255,.25)}
+.quick button{flex:none;background:var(--fg);color:var(--bg);border-radius:10px;padding:0 14px;font-weight:800}
+.qprev{display:flex;align-items:center;gap:8px;width:100%;text-align:left;font-size:.8rem;color:var(--fg);padding:0 2px 8px}
+.qprev i{width:10px;height:10px;border-radius:50%;flex:none}
+.qprev span{margin-left:auto;color:var(--muted);text-decoration:underline;text-underline-offset:3px}
 body.daymode .tabs{display:grid}
 .seg{display:flex;background:var(--field);border:1px solid var(--line-h);border-radius:9px;padding:2px;margin-left:auto}
 .seg button{padding:5px 9px;border-radius:7px;font-size:.78rem;color:var(--muted)}
@@ -221,6 +230,11 @@ body.daymode .tabs{display:grid}
         <button id="next" aria-label="Вперёд">→</button>
       </div>
     </div>
+    <form class="quick" id="qf" autocomplete="off">
+      <input id="q" placeholder="Бокс в пятницу в 15:30 на полтора часа" enterkeyhint="done" aria-label="Быстро добавить дело">
+      <button type="submit" id="q-go" hidden>Добавить</button>
+    </form>
+    <button type="button" class="qprev" id="q-prev" hidden></button>
     <div class="tabs" id="tabs"></div>
   </div>
   <div id="view"></div>
@@ -472,13 +486,13 @@ function makeWheel(items,idx,onPick,cls){
   return el;
 }
 
-function openEditor(e,w,wStart,day,s0,e0){
+function openEditor(e,w,wStart,day,s0,e0,P={}){
   const isNew=!e;
   const st={
-    title:e?e.title:"",
-    color:e&&e.color?e.color:"white",
+    title:e?e.title:(P.title||""),
+    color:e&&e.color?e.color:(P.color||"white"),
     date:dayOnly(wStart?addDays(wStart,e?e.day:day):defaultDate()),
-    allDay:e?!e.start:false,
+    allDay:e?!e.start:!!P.allDay,
     start:(e&&e.start)||s0||nextSlot(),
     dur:60,
     keep:false
@@ -631,6 +645,150 @@ function openEditor(e,w,wStart,day,s0,e0){
 document.addEventListener("keydown",k=>{if(k.key==="Escape"){$("modal").innerHTML="";window.__paintTpl=null}});
 $("fab").onclick=()=>openEditor(null);
 
+/* ---------- quick add: Russian free-text → event ---------- */
+const NUMW={"ноль":0,"один":1,"одну":1,"одного":1,"два":2,"две":2,"двух":2,"три":3,"трех":3,"четыре":4,"четырех":4,"пять":5,"пяти":5,"шесть":6,"шести":6,"семь":7,"семи":7,"восемь":8,"восьми":8,"девять":9,"девяти":9,"десять":10,"десяти":10,"одиннадцать":11,"одиннадцати":11,"двенадцать":12,"двенадцати":12,"тринадцать":13,"четырнадцать":14,"пятнадцать":15,"шестнадцать":16,"семнадцать":17,"восемнадцать":18,"девятнадцать":19,"двадцать":20,"тридцать":30,"сорок":40,"пятьдесят":50};
+const ORDW={"первого":1,"второго":2,"третьего":3,"четвертого":4,"пятого":5,"шестого":6,"седьмого":7,"восьмого":8,"девятого":9,"десятого":10,"одиннадцатого":11,"двенадцатого":12};
+const MONW=[/^янв/,/^фев/,/^мар/,/^апр/,/^ма[яй]/,/^июн/,/^июл/,/^авг/,/^сен/,/^окт/,/^ноя/,/^дек/];
+const WDW=[["понедельник","пн"],["вторник","вт"],["сред","ср"],["четверг","чт"],["пятниц","пт"],["суббот","сб"],["воскресень","вс"]];
+
+function wordsToDigits(t){
+  /* "двадцать пять" → "25", "пять" → "5"; "полпятого" → "4:30" */
+  t=t.replace(/(?:^|\s)(?:в\s+)?(?:пол|половине\s+)([а-я]+ого)(?=\s|$)/g,(m,w)=>ORDW[w]!=null?` в ${ORDW[w]-1||12}:30`:m);
+  const parts=t.split(/\s+/),out=[];
+  for(let i=0;i<parts.length;i++){
+    const w=parts[i];
+    if(NUMW[w]!=null){
+      let v=NUMW[w];
+      if(v>=20&&v%10===0&&NUMW[parts[i+1]]!=null&&NUMW[parts[i+1]]<10){v+=NUMW[parts[i+1]];i++}
+      out.push(String(v));
+    }else out.push(w);
+  }
+  return out.join(" ");
+}
+
+function parseQuick(raw,now=new Date()){
+  let t=" "+raw.toLowerCase().replace(/ё/g,"е").replace(/[,!?;]/g," ").replace(/\s+/g," ").trim()+" ";
+  t=" "+wordsToDigits(t.trim())+" ";
+  const cut=re=>{const m=t.match(re);if(m)t=t.replace(m[0]," | ");return m};
+  const today=new Date(now.getFullYear(),now.getMonth(),now.getDate());
+  let dur=null,date=null,hh=null,mm=0,m;
+
+  /* duration */
+  if(cut(/\s(?:на\s)?полтора\sчаса\s/))dur=90;
+  else if(cut(/\s(?:на\s)?полчаса\s/))dur=30;
+  else if((m=cut(/(?<!\s(?:в|во|к|с))\s(?:на\s)?(\d+(?:[.,]\d+)?)\s?(?:ч|час|часа|часов)(?:\s(\d+)\s?(?:м|мин|минут|минуты))?\s/)))dur=Math.round(parseFloat(m[1].replace(",","."))*60)+(m[2]?+m[2]:0);
+  else if((m=cut(/\s(?:на\s)?(\d+)\s?(?:м|мин|минут|минуты|минуту)\s/)))dur=+m[1];
+  else if(cut(/\sна\sчас\s/))dur=60;
+
+  /* date */
+  if(cut(/\sпослезавтра\s/))date=addDays(today,2);
+  else if(cut(/\sзавтра\s/))date=addDays(today,1);
+  else if(cut(/\sсегодня\s/))date=today;
+  else if((m=cut(/\sчерез\s(\d+)\s(?:день|дня|дней)\s/)))date=addDays(today,+m[1]);
+  else if(cut(/\sчерез\sнеделю\s/))date=addDays(today,7);
+  else if((m=cut(/\s(\d{1,2})[.\/](\d{1,2})(?:[.\/](\d{2,4}))?\s/))){
+    let y=m[3]?+m[3]:today.getFullYear();if(y<100)y+=2000;date=new Date(y,+m[2]-1,+m[1]);
+    if(!m[3]&&date<today)date.setFullYear(y+1);
+  }else if((m=t.match(/\s(\d{1,2})(?:-?го)?\s([а-я]+)\s/))&&MONW.some(r=>r.test(m[2]))){
+    t=t.replace(m[0]," | ");const mo=MONW.findIndex(r=>r.test(m[2]));
+    date=new Date(today.getFullYear(),mo,+m[1]);if(date<today)date.setFullYear(today.getFullYear()+1);
+  }else if((m=cut(/\s(?:на\s|к\s)?(\d{1,2})(?:-?го|-?е)?\sчисла\s/))){
+    date=new Date(today.getFullYear(),today.getMonth(),+m[1]);if(date<today)date.setMonth(date.getMonth()+1);
+  }else{
+    for(let d=0;d<7;d++){
+      const [full,short]=WDW[d];
+      const re=new RegExp(`\\s(?:(?:в|во|на|к)\\s)?(?:(следующ[а-я]*|этот|эту|это)\\s)?(?:${full}[а-я]*|${short})\\s`);
+      if((m=cut(re))){
+        const cur=(today.getDay()+6)%7;let add=(d-cur+7)%7;
+        if(m[1]&&m[1].startsWith("следующ"))add+=add===0?7:7;
+        date=addDays(today,add);break;
+      }
+    }
+  }
+
+  /* time */
+  const sfx="(утра|дня|вечера|ночи)";
+  if(cut(/\s(?:в\s|на\s|к\s)?полдень\s/)){hh=12}
+  else if(cut(/\s(?:в\s|на\s|к\s)?полночь\s/)){hh=0}
+  else if((m=cut(new RegExp(`\\s(?:в\\s|на\\s|к\\s|с\\s)?(\\d{1,2})[:.](\\d{2})(?:\\s${sfx})?\\s`)))||
+          (m=cut(new RegExp(`\\s(?:в\\s|на\\s|к\\s|с\\s)?([01]?\\d|2[0-3])\\s([0-5]\\d)(?:\\s${sfx})?\\s`)))){
+    hh=+m[1];mm=+m[2];if(m[3])hh=applySfx(hh,m[3]);
+  }else if((m=cut(new RegExp(`\\s(?:в\\s|на\\s|к\\s|с\\s)(?:(\\d{1,2})|час)(?:\\s(?:час|часа|часов|ч))?(?:\\s${sfx})?\\s`)))){
+    hh=m[1]!=null?+m[1]:1;
+    if(m[2])hh=applySfx(hh,m[2]);else if(hh>=1&&hh<=6)hh+=12;
+  }else if((m=cut(new RegExp(`\\s(\\d{1,2})\\s${sfx}\\s`)))){hh=applySfx(+m[1],m[2])}
+  if(hh!=null&&(hh>23||mm>59))hh=null;
+
+  /* title = what is left */
+  /* drop little words that belonged to a removed part ("на |", "в |") and stray "|" */
+  const FILL="(?:на|в|во|к|с|до|и|числа)";
+  for(let k=0;k<3;k++)t=t.replace(new RegExp(`\\s${FILL}\\s(?=\\|)`,"g")," ").replace(new RegExp(`\\|\\s${FILL}\\s(?=\\||$)`,"g"),"| ");
+  let title=t.replace(/\|/g," ").replace(/\s+/g," ").trim().replace(new RegExp(`^${FILL}\\s|\\s${FILL}$`,"g"),"").trim();
+  /* restore the user's own capital letters */
+  const orig=raw.trim().split(/\s+/);
+  title=title.split(" ").map(w=>orig.find(o=>o.toLowerCase().replace(/ё/g,"е").replace(/[,!?;]/g,"")===w)?.replace(/[,!?;]/g,"")||w).join(" ");
+  title=title?title[0].toUpperCase()+title.slice(1):"";
+  return {title,date:date||today,start:hh==null?null:fmt(hh*60+mm),dur};
+}
+function applySfx(h,s){
+  if(s==="утра")return h===12?0:h;
+  if(s==="дня")return h<12&&h<=6?h+12:h;
+  if(s==="вечера")return h<12?h+12:h;
+  if(s==="ночи")return h===12?0:h;
+  return h;
+}
+
+function quickParse(){
+  const v=$("q").value.trim();if(!v)return null;
+  const r=parseQuick(v);if(!r.title)return null;
+  const tpl=templates.find(t=>t.title.toLowerCase()===r.title.toLowerCase());
+  const allDay=r.start==null;
+  const dur=r.dur??tpl?.dur??60;
+  return {title:tpl?tpl.title:r.title,date:r.date,start:r.start,dur,allDay,color:tpl?.color||"white"};
+}
+function quickPreview(){
+  const p=quickParse(),el=$("q-prev");
+  $("q-go").hidden=!p;el.hidden=!p;if(!p)return;
+  const time=p.allDay?"без времени":`${p.start}–${fmt(Math.min(1439,toMin(p.start)+p.dur))}`;
+  el.innerHTML="";const dot=document.createElement("i");dot.style.background=colorOf(p.color);
+  el.append(dot,document.createTextNode(`${p.title} · ${dateLabel(p.date)} · ${time}`));
+  const hint=document.createElement("span");hint.textContent="изменить";el.append(hint);
+}
+const _qp=quickPreview;quickPreview=function(){_qp();document.documentElement.style.setProperty("--topH",$("top").offsetHeight+"px")};
+function addItem(date,item){
+  const tw=week(monday(date));
+  if(tw.loaded){tw.events.push(item);save(tw)}
+  else setDoc(tw.ref,{events:arrayUnion(item),updatedAt:new Date().toISOString()},{merge:true}).catch(()=>setDot("off","Не сохранилось"));
+  return tw;
+}
+function showAdded(p,date){
+  if(!isDay()&&iso(monday(date))!==iso(weekStart)){weekStart=monday(date)}
+  render();
+  requestAnimationFrame(()=>{
+    if(isDay()){
+      const k=iso(monday(date)),d=(date.getDay()+6)%7;
+      if(!$(`d-${k}-${d}`)){rangeStart=addDays(monday(date),-7);rangeLen=3;render()}
+      scrollToDay(k,d,p.start?Math.max(0,toMin(p.start)-60):null);
+    }
+  });
+}
+$("q").addEventListener("input",quickPreview);
+$("qf").onsubmit=ev=>{ev.preventDefault();
+  const p=quickParse();if(!p)return;
+  const end=Math.min(1439,toMin(p.start||"00:00")+p.dur);
+  const item={id:Math.random().toString(36).slice(2,10),title:p.title,color:p.color,day:(p.date.getDay()+6)%7,
+    start:p.allDay?"":p.start,end:p.allDay?"":fmt(end),done:false};
+  addItem(p.date,item);
+  $("q").value="";quickPreview();$("q").blur();showAdded(p,p.date);
+};
+$("q-prev").onclick=()=>{
+  const p=quickParse();if(!p)return;
+  const ws=monday(p.date),day=(p.date.getDay()+6)%7;
+  const s0=p.start||null,e0=p.start?fmt(Math.min(1439,toMin(p.start)+p.dur)):null;
+  $("q").value="";quickPreview();$("q").blur();
+  openEditor(null,null,ws,day,s0,e0,{title:p.title,color:p.color,allDay:p.allDay});
+};
+
 /* ---------- navigation ---------- */
 function go(delta){
   if(isDay()){
@@ -689,7 +847,7 @@ onAuthStateChanged(auth,user=>{
 });
 
 /* ---------- offline copy + auto-update ---------- */
-const BUILD="20261005210350";
+const BUILD="20261005210837";
 async function checkVersion(){
   if(!navigator.onLine)return;
   try{const r=await fetch("version.txt?t="+Date.now(),{cache:"no-store"});if(!r.ok)return;
