@@ -109,12 +109,13 @@ input::-webkit-calendar-picker-indicator{filter:invert(1);opacity:.5}
 /* wheel picker */
 .picker{position:relative;display:flex;justify-content:center;align-items:center;gap:2px;height:180px;user-select:none;-webkit-user-select:none}
 .picker::before{content:"";position:absolute;left:0;right:0;top:72px;height:36px;background:var(--field);border:1px solid var(--line-h);border-radius:8px;pointer-events:none}
-.wheel{position:relative;height:180px;overflow-y:auto;scroll-snap-type:y mandatory;scrollbar-width:none;width:64px;padding-block:72px;overscroll-behavior:contain;
+.wheel{position:relative;height:180px;overflow-y:auto;scroll-snap-type:y mandatory;scrollbar-width:none;flex:1 1 0;min-width:0;padding-block:72px;overscroll-behavior:contain;
   -webkit-mask-image:linear-gradient(transparent,#000 35%,#000 65%,transparent);mask-image:linear-gradient(transparent,#000 35%,#000 65%,transparent)}
 .wheel::-webkit-scrollbar{display:none}
-.wheel.wide{width:170px}
+.wheel.h div{text-align:right;padding-right:14px}
+.wheel.m div{text-align:left;padding-left:14px}
 .wheel div{height:36px;line-height:36px;text-align:center;scroll-snap-align:center;font-size:1.1rem;font-variant-numeric:tabular-nums;cursor:pointer}
-.picker .colon{position:relative;font-size:1.1rem;color:var(--muted)}
+.picker .colon{position:relative;flex:none;font-size:1.1rem;color:var(--muted)}
 .acts{display:flex;align-items:center;gap:16px}
 .acts .link{color:var(--muted);font-size:.85rem}
 .acts .link:hover{color:var(--fg)}
@@ -421,8 +422,8 @@ function openEditor(e,w,wStart,day,s0,e0){
       const key=active,cur=toMin(st[key]);
       const mins=Array.from({length:12},(_,i)=>i*5);
       let hh=Math.floor(cur/60),mm=cur%60;
-      const hW=makeWheel(Array.from({length:24},(_,i)=>pad(i)),hh,i=>{hh=i;apply()});
-      const mW=makeWheel(mins.map(pad),Math.round(mm/5)%12,i=>{mm=mins[i];apply()});
+      const hW=makeWheel(Array.from({length:24},(_,i)=>pad(i)),hh,i=>{hh=i;apply()});hW.classList.add("h");
+      const mW=makeWheel(mins.map(pad),Math.round(mm/5)%12,i=>{mm=mins[i];apply()});mW.classList.add("m");
       function apply(){const v=fmt(hh*60+mm);if(key==="start")setStart(v);else st.end=v;show()}
       const c=document.createElement("span");c.className="colon";c.textContent=":";
       p.append(hW,c,mW);
