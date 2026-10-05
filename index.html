@@ -87,8 +87,34 @@ button{font:inherit;color:inherit;cursor:pointer;background:none;border:0;paddin
 input,select{font:inherit;font-size:16px;color:var(--fg);background:var(--field);border:1px solid var(--line-h);border-radius:8px;padding:10px 12px;width:100%;min-width:0}
 input:focus,select:focus{outline:none;border-color:var(--muted)}
 input::-webkit-calendar-picker-indicator{filter:invert(1);opacity:.5}
-.row{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px}
+.row{display:grid;grid-template-columns:1fr 1fr;gap:8px}
 .hint{font-size:.72rem;color:var(--muted);margin-top:-4px}
+
+/* "+" button */
+.fab{position:fixed;right:max(20px,env(safe-area-inset-right));bottom:calc(20px + env(safe-area-inset-bottom));width:56px;height:56px;border-radius:50%;background:var(--fg);color:var(--bg);font-size:28px;font-weight:300;line-height:1;z-index:8;box-shadow:0 6px 20px rgba(0,0,0,.6);display:grid;place-items:center}
+.fab:active{transform:scale(.95)}
+
+/* editor fields: tap = wheel, tap again = keyboard */
+.fld{display:flex;flex-direction:column;gap:4px;min-width:0}
+.fld span{font-size:.7rem;color:var(--muted)}
+.fld input{font-variant-numeric:tabular-nums;cursor:pointer}
+.fld input.act{border-color:var(--fg)}
+.fld input:not([readonly]){cursor:text;background:#000}
+.sw{display:flex;align-items:center;justify-content:space-between;font-size:.9rem;padding:2px 0}
+.sw input{appearance:none;-webkit-appearance:none;width:44px;height:26px;border-radius:13px;background:var(--line-h);position:relative;padding:0;border:0;cursor:pointer;flex:none;transition:background .15s}
+.sw input::after{content:"";position:absolute;top:3px;left:3px;width:20px;height:20px;border-radius:50%;background:var(--fg);transition:transform .15s}
+.sw input:checked{background:var(--fg)}
+.sw input:checked::after{background:var(--bg);transform:translateX(18px)}
+
+/* wheel picker */
+.picker{position:relative;display:flex;justify-content:center;align-items:center;gap:2px;height:180px;user-select:none;-webkit-user-select:none}
+.picker::before{content:"";position:absolute;left:0;right:0;top:72px;height:36px;background:var(--field);border:1px solid var(--line-h);border-radius:8px;pointer-events:none}
+.wheel{position:relative;height:180px;overflow-y:auto;scroll-snap-type:y mandatory;scrollbar-width:none;width:64px;padding-block:72px;overscroll-behavior:contain;
+  -webkit-mask-image:linear-gradient(transparent,#000 35%,#000 65%,transparent);mask-image:linear-gradient(transparent,#000 35%,#000 65%,transparent)}
+.wheel::-webkit-scrollbar{display:none}
+.wheel.wide{width:170px}
+.wheel div{height:36px;line-height:36px;text-align:center;scroll-snap-align:center;font-size:1.1rem;font-variant-numeric:tabular-nums;cursor:pointer}
+.picker .colon{position:relative;font-size:1.1rem;color:var(--muted)}
 .acts{display:flex;align-items:center;gap:16px}
 .acts .link{color:var(--muted);font-size:.85rem}
 .acts .link:hover{color:var(--fg)}
@@ -134,14 +160,15 @@ input::-webkit-calendar-picker-indicator{filter:invert(1);opacity:.5}
     <div class="tabs" id="tabs"></div>
   </div>
   <div id="view"></div>
-  <div class="foot"><button id="logout">Выйти</button></div>
+  <div class="foot" style="padding-bottom:64px"><button id="logout">Выйти</button></div>
 </div>
+<button class="fab" id="fab" aria-label="Добавить дело" hidden>+</button>
 <div id="modal"></div>
 
 <script type="module">
 import {initializeApp} from "https://www.gstatic.com/firebasejs/11.0.2/firebase-app.js";
 import {getAuth,onAuthStateChanged,signInWithEmailAndPassword,signOut} from "https://www.gstatic.com/firebasejs/11.0.2/firebase-auth.js";
-import {initializeFirestore,persistentLocalCache,persistentMultipleTabManager,doc,onSnapshot,setDoc} from "https://www.gstatic.com/firebasejs/11.0.2/firebase-firestore.js";
+import {initializeFirestore,persistentLocalCache,persistentMultipleTabManager,doc,onSnapshot,setDoc,arrayUnion} from "https://www.gstatic.com/firebasejs/11.0.2/firebase-firestore.js";
 
 const firebaseConfig={
   apiKey:"AIzaSyCS-a6ROL_7dvV9VxabCHjqT1R4e8bkT9w",
@@ -187,7 +214,7 @@ function week(start){
   w.unsub=onSnapshot(w.ref,{includeMetadataChanges:true},s=>{
     const d=s.exists()?s.data():null;
     w.events=d&&Array.isArray(d.events)?d.events.map(e=>({...e})):[];
-    w.pending=s.metadata.hasPendingWrites;
+    w.pending=s.metadata.hasPendingWrites;w.loaded=true;
     schedule();syncState();
   },()=>setDot("off","Нет доступа к базе. Проверьте правила Firestore"));
   return w;
@@ -308,39 +335,140 @@ function grow(){
 let sraf=0;addEventListener("scroll",()=>{if(!sraf)sraf=requestAnimationFrame(()=>{sraf=0;if(uid){updateTop();grow()}})},{passive:true});
 
 /* ---------- editor ---------- */
-function openEditor(e,w,start,day,s0,e0){
+const WD=["Вс","Пн","Вт","Ср","Чт","Пт","Сб"];
+const dateLabel=d=>`${WD[d.getDay()]}, ${d.getDate()} ${MON[d.getMonth()]}${d.getFullYear()!==new Date().getFullYear()?" "+d.getFullYear():""}`;
+const dateText=d=>`${pad(d.getDate())}.${pad(d.getMonth()+1)}.${d.getFullYear()}`;
+const dayOnly=d=>new Date(d.getFullYear(),d.getMonth(),d.getDate());
+function parseDate(s,fallback){
+  const m=s.trim().match(/^(\d{1,2})[.\/\-\s](\d{1,2})(?:[.\/\-\s](\d{2,4}))?$/);if(!m)return null;
+  let y=m[3]?+m[3]:fallback.getFullYear();if(y<100)y+=2000;
+  const d=new Date(y,+m[2]-1,+m[1]);return d.getMonth()===+m[2]-1?d:null;
+}
+function parseTime(s){
+  const t=s.trim().replace(/\s/g,"");let m=t.match(/^(\d{1,2})[:.,-](\d{1,2})$/)||t.match(/^(\d{1,2})(\d{2})$/)||t.match(/^(\d{1,2})$/);
+  if(!m)return null;const h=+m[1],mi=m[2]==null?0:+m[2];return h<24&&mi<60?fmt(h*60+mi):null;
+}
+function defaultDate(){
+  const today=dayOnly(new Date());
+  if(mq.matches)return addDays(new Date(visible.k+"T00:00:00"),visible.d);
+  return iso(monday(today))===iso(weekStart)?today:new Date(weekStart);
+}
+function nextSlot(){const n=new Date(),m=Math.min(1380,Math.ceil((n.getHours()*60+n.getMinutes()+1)/30)*30);return fmt(m)}
+
+/* one scroll-snap wheel; onPick(index) fires when it settles */
+function makeWheel(items,idx,onPick,wide){
+  const el=document.createElement("div");el.className="wheel"+(wide?" wide":"");
+  items.forEach((t,i)=>{const it=document.createElement("div");it.textContent=t;it.onclick=()=>{el.scrollTop=i*36};el.append(it)});
+  let tm=0;el.skip=false;
+  el.addEventListener("scroll",()=>{clearTimeout(tm);tm=setTimeout(()=>{
+    if(el.skip){el.skip=false;return}
+    onPick(Math.max(0,Math.min(items.length-1,Math.round(el.scrollTop/36))))},90)},{passive:true});
+  el.set=i=>{const t=i*36;if(Math.abs(el.scrollTop-t)>1){el.skip=true;el.scrollTop=t}};
+  requestAnimationFrame(()=>el.set(idx));
+  return el;
+}
+
+function openEditor(e,w,wStart,day,s0,e0){
   const isNew=!e;
-  const cur=e?{...e}:{id:Math.random().toString(36).slice(2,10),title:"",day:day??0,start:s0||"",end:e0||"",done:false};
+  const st={
+    title:e?e.title:"",
+    date:dayOnly(wStart?addDays(wStart,e?e.day:day):defaultDate()),
+    allDay:e?!e.start:false,
+    start:(e&&e.start)||s0||nextSlot(),
+    end:(e&&e.end)||e0||""
+  };
+  if(!st.end){const s=toMin(st.start);st.end=fmt(Math.min(1439,s+60))}
+  let active="start";
   const m=$("modal");
-  m.innerHTML=`<div class="back" id="bk"><form class="sheet" id="f">
-    <input id="f-title" required maxlength="120" placeholder="Что делаем" autocomplete="off" aria-label="Название">
-    <div class="row">
-      <select id="f-day" aria-label="День">${DAYS.map((d,i)=>`<option value="${i}">${d}, ${addDays(start,i).getDate()}</option>`).join("")}</select>
-      <input id="f-start" type="time" step="300" aria-label="Начало">
-      <input id="f-end" type="time" step="300" aria-label="Конец">
+  m.innerHTML=`<div class="back" id="bk"><form class="sheet" id="f" autocomplete="off">
+    <input id="f-title" maxlength="120" placeholder="Что делаем" aria-label="Название">
+    <label class="fld"><span>Дата</span><input id="f-date" readonly inputmode="numeric" aria-label="Дата"></label>
+    <label class="sw">Без времени<input type="checkbox" id="f-all"></label>
+    <div class="row" id="f-times">
+      <label class="fld"><span>Начало</span><input id="f-start" readonly inputmode="numeric" aria-label="Начало"></label>
+      <label class="fld"><span>Конец</span><input id="f-end" readonly inputmode="numeric" aria-label="Конец"></label>
     </div>
-    <div class="hint">Без времени дело встанет в строку с датой.</div>
+    <div class="picker" id="f-pick"></div>
+    <div class="hint">Нажмите на поле ещё раз, чтобы ввести вручную.</div>
     <div class="acts">
       <button type="button" class="link" id="f-cancel">Отмена</button>
       ${isNew?"":`<button type="button" class="link" id="f-del">Удалить</button>`}
       <button type="submit" class="save">${isNew?"Добавить":"Сохранить"}</button>
     </div>
   </form></div>`;
-  $("f-title").value=cur.title;$("f-day").value=cur.day;$("f-start").value=cur.start;$("f-end").value=cur.end;
+  const F={date:$("f-date"),start:$("f-start"),end:$("f-end")};
+  $("f-title").value=st.title;$("f-all").checked=st.allDay;
+
+  function show(){
+    F.date.value=F.date.readOnly?dateLabel(st.date):F.date.value;
+    if(F.start.readOnly)F.start.value=st.start;
+    if(F.end.readOnly)F.end.value=st.end;
+    $("f-times").hidden=st.allDay;
+    if(st.allDay&&active!=="date")active="date";
+    Object.entries(F).forEach(([k,el])=>el.classList.toggle("act",k===active));
+  }
+  function setStart(v){const d=toMin(st.end)-toMin(st.start);st.start=v;st.end=fmt(Math.min(1439,toMin(v)+(d>0?d:60)))}
+  function buildPicker(){
+    const p=$("f-pick");p.textContent="";
+    if(active==="date"){
+      const today=dayOnly(new Date()),base=addDays(today,-60);
+      const n=Math.max(426,Math.round((st.date-base)/864e5)+30);
+      const days=[];for(let i=0;i<n;i++)days.push(addDays(base,i));
+      let idx=Math.round((dayOnly(st.date)-base)/864e5);
+      if(idx<0){days.unshift(...Array.from({length:-idx},(_,i)=>addDays(st.date,i)));idx=0}
+      p.append(makeWheel(days.map(dateLabel),idx,i=>{st.date=days[i];show()},true));
+    }else{
+      const key=active,cur=toMin(st[key]);
+      const mins=Array.from({length:12},(_,i)=>i*5);
+      let hh=Math.floor(cur/60),mm=cur%60;
+      const hW=makeWheel(Array.from({length:24},(_,i)=>pad(i)),hh,i=>{hh=i;apply()});
+      const mW=makeWheel(mins.map(pad),Math.round(mm/5)%12,i=>{mm=mins[i];apply()});
+      function apply(){const v=fmt(hh*60+mm);if(key==="start")setStart(v);else st.end=v;show()}
+      const c=document.createElement("span");c.className="colon";c.textContent=":";
+      p.append(hW,c,mW);
+    }
+  }
+  /* first tap on a field = its wheel, second tap = keyboard */
+  Object.entries(F).forEach(([k,el])=>{
+    el.addEventListener("click",ev=>{
+      if(active!==k){ev.preventDefault();active=k;show();buildPicker();return}
+      if(el.readOnly){el.readOnly=false;el.value=k==="date"?dateText(st.date):st[k];el.focus();el.select()}
+    });
+    el.addEventListener("blur",()=>commit(k));
+    el.addEventListener("keydown",ev=>{if(ev.key==="Enter"){ev.preventDefault();el.blur()}});
+  });
+  function commit(k){
+    const el=F[k];if(el.readOnly)return;
+    if(k==="date"){const d=parseDate(el.value,st.date);if(d)st.date=d}
+    else{const v=parseTime(el.value);if(v){if(k==="start")setStart(v);else st.end=v}}
+    el.readOnly=true;show();buildPicker();
+  }
+  $("f-all").onchange=ev=>{st.allDay=ev.target.checked;active=st.allDay?"date":"start";show();buildPicker()};
+
   const close=()=>{m.innerHTML=""};
   $("f-cancel").onclick=close;
   $("bk").onclick=ev=>{if(ev.target.id==="bk")close()};
   if(!isNew){let armed=false;$("f-del").onclick=()=>{
     if(!armed){armed=true;$("f-del").textContent="Точно?";return}
-    w.events=w.events.filter(x=>x.id!==cur.id);save(w);render();close()}}
+    w.events=w.events.filter(x=>x.id!==e.id);save(w);render();close()}}
   $("f").onsubmit=ev=>{ev.preventDefault();
-    cur.title=$("f-title").value.trim();if(!cur.title)return;
-    cur.day=+$("f-day").value;cur.start=$("f-start").value;cur.end=cur.start?$("f-end").value:"";
-    if(isNew)w.events.push(cur);else w.events=w.events.map(x=>x.id===cur.id?cur:x);
-    save(w);render();close()};
-  setTimeout(()=>$("f-title").focus(),30);
+    Object.keys(F).forEach(commit);
+    const title=$("f-title").value.trim();if(!title){$("f-title").focus();return}
+    const tw=week(monday(st.date));
+    const item={id:e?e.id:Math.random().toString(36).slice(2,10),title,day:(st.date.getDay()+6)%7,
+      start:st.allDay?"":st.start,end:st.allDay?"":st.end,done:e?!!e.done:false};
+    if(e&&w.k!==tw.k){w.events=w.events.filter(x=>x.id!==e.id);save(w)}
+    if(e&&w.k===tw.k){w.events=w.events.map(x=>x.id===e.id?item:x);save(w)}
+    else if(tw.loaded){tw.events.push(item);save(tw)}
+    else{setDoc(tw.ref,{events:arrayUnion(item),updatedAt:new Date().toISOString()},{merge:true}).catch(()=>setDot("off","Не сохранилось"))}
+    render();close();
+    if(mq.matches)requestAnimationFrame(()=>scrollToDay(tw.k,item.day,item.start?Math.max(0,toMin(item.start)-60):null));
+  };
+  show();buildPicker();
+  if(isNew)setTimeout(()=>$("f-title").focus(),30);
 }
 document.addEventListener("keydown",k=>{if(k.key==="Escape")$("modal").innerHTML=""});
+$("fab").onclick=()=>openEditor(null);
 
 /* ---------- navigation ---------- */
 function go(delta){
@@ -368,7 +496,7 @@ onAuthStateChanged(auth,user=>{
   $("boot").hidden=true;
   weeks.forEach(w=>w.unsub?.());weeks.clear();
   uid=user?user.uid:null;
-  $("login").hidden=!!user;$("app").hidden=!user;
+  $("login").hidden=!!user;$("app").hidden=!user;$("fab").hidden=!user;
   if(user){render();syncState();requestAnimationFrame(()=>requestAnimationFrame(scrollToNow))}
 });
 
