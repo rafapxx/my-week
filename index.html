@@ -192,6 +192,7 @@ input,select,button{font-weight:inherit}
 .qprev i{width:10px;height:10px;border-radius:50%;flex:none}
 .qprev span{margin-left:auto;color:var(--muted);text-decoration:underline;text-underline-offset:3px}
 
+.quick .lng{background:transparent;color:var(--muted);border:1px solid var(--line-h);padding:0 9px;font-size:.75rem;font-weight:800}
 .quick .mic{background:var(--field);color:var(--fg);border:1px solid var(--line-h);padding:0 11px}
 .quick .mic.on{background:var(--now);border-color:var(--now);color:#fff;box-shadow:0 0 12px var(--now);animation:micp 1.2s ease-in-out infinite}
 @keyframes micp{50%{box-shadow:0 0 2px var(--now)}}
@@ -237,6 +238,7 @@ body.daymode .tabs{display:grid}
     </div>
     <form class="quick" id="qf" autocomplete="off">
       <input id="q" placeholder="Добавление текстом" enterkeyhint="done" aria-label="Быстро добавить дело">
+      <button type="button" class="lng" id="q-lng" aria-label="Язык голосового ввода">RU</button>
       <button type="button" class="mic" id="q-mic" aria-label="Голосовой ввод"><svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><rect x="9" y="3" width="6" height="12" rx="3" fill="currentColor"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/></svg></button>
       <button type="submit" id="q-go" hidden>Добавить</button>
     </form>
@@ -672,8 +674,45 @@ function wordsToDigits(t){
   return out.join(" ");
 }
 
+
+/* English → the Russian forms the rules below already understand */
+const ENNUM={"zero":0,"one":1,"two":2,"three":3,"four":4,"five":5,"six":6,"seven":7,"eight":8,"nine":9,"ten":10,"eleven":11,"twelve":12,"thirteen":13,"fourteen":14,"fifteen":15,"sixteen":16,"seventeen":17,"eighteen":18,"nineteen":19,"twenty":20,"thirty":30,"forty":40,"fifty":50};
+const ENMON=["jan","feb","mar","apr","may","jun","jul","aug","sep","oct","nov","dec"],RUMON=["января","февраля","марта","апреля","мая","июня","июля","августа","сентября","октября","ноября","декабря"];
+const ENWD={"monday":"понедельник","mon":"понедельник","tuesday":"вторник","tue":"вторник","tues":"вторник","wednesday":"среда","wed":"среда","thursday":"четверг","thu":"четверг","thurs":"четверг","friday":"пятница","fri":"пятница","saturday":"суббота","sat":"суббота","sunday":"воскресенье","sun":"воскресенье"};
+function enToRu(t){
+  if(!/[a-z]/.test(t))return t;
+  t=" "+t.replace(/\b([a-z]+)-([a-z]+)\b/g,(m,a,b)=>ENNUM[a]!=null&&ENNUM[b]!=null&&ENNUM[b]<10?String(ENNUM[a]+ENNUM[b]):m)+" ";
+  t=t.replace(/\s(an?|one)\s(hour)(?=\s)/g," 1 $2").replace(/\s(an?)\s(day|week)(?=\s)/g," 1 $2");
+  t=t.replace(/(?<=\s)[a-z]+(?=[\s-])/g,w=>ENNUM[w]!=null?String(ENNUM[w]):w);
+  const rules=[
+    [/\s(?:please|pls|plz|can you|could you|would you|i need to|i have to|i have|i've got|remind me to|remind me|let's|lets)(?=\s)/g," "],
+    [/^\s*(?:add|put|schedule|create|set up|set|book|plan|make|new|an?\s(?=event|task)|event|task)(?=\s)/,""],
+    [/^\s*(?:add|put|schedule|create|set up|set|book|plan|make)(?=\s)/,""],
+    [/\s(?:for\s)?half\san\shour(?=\s)/g," на полчаса"],
+    [/\s(?:for\s)?(\d+(?:\.\d+)?)\s?(?:h|hr|hrs|hour|hours)(?:\s(?:and\s)?(\d+)\s?(?:m|min|mins|minutes?))?(?=\s)/g,(m,a,b)=>` на ${a} часа${b?` ${b} минут`:""}`],
+    [/\s(?:for\s)?(\d+)\s?(?:m|min|mins|minutes?)(?=\s)/g," на $1 минут"],
+    [/\s(\d+(?:\.\d+)?)-?(?:hour|hr)(?=\s)/g," $1-часовой"],
+    [/\s(\d+)-?minute(?=\s)/g," $1-минутный"],
+    [/\s(?:the\s)?day\safter\stomorrow(?=\s)/g," послезавтра"],
+    [/\stomorrow(?=\s)/g," завтра"],[/\stonight(?=\s)/g," сегодня вечером"],[/\stoday(?=\s)/g," сегодня"],
+    [/\sin\s(\d+)\sdays?(?=\s)/g," через $1 дня"],[/\sin\s1\sweek(?=\s)/g," через неделю"],
+    [/\s(?:at\s)?noon(?=\s)/g," в полдень"],[/\s(?:at\s)?midnight(?=\s)/g," в полночь"],
+    [/\s(?:at\s)?half\spast\s(\d{1,2})(?=\s)/g," в $1:30"],[/\s(?:at\s)?quarter\spast\s(\d{1,2})(?=\s)/g," в $1:15"],
+    [/\s(?:at\s)?quarter\sto\s(\d{1,2})(?=\s)/g,(m,h)=>` в ${(+h+11)%12||12}:45`],
+    [/\s(?:at\s)?(\d{1,2})(?::(\d{2}))?\s?(am|pm|a\.m\.|p\.m\.)(?=\s)/g,(m,h,mi,ap)=>{let x=+h%12;if(ap[0]==="p")x+=12;return ` в ${x}:${mi||"00"}`}],
+    [/\sat\s(\d{1,2}(?::\d{2})?)(?=\s)/g," в $1"],
+    [/\sin\sthe\smorning(?=\s)/g," утра"],[/\sin\sthe\s(?:afternoon)(?=\s)/g," дня"],[/\sin\sthe\sevening(?=\s)/g," вечера"],
+    [/\s(?:on\s)?(?:the\s)?(\d{1,2})(?:st|nd|rd|th)(?:\sof)?\s([a-z]{3})[a-z]*(?=\s)/g,(m,d,mo)=>ENMON.includes(mo)?` ${d} ${RUMON[ENMON.indexOf(mo)]}`:m],
+    [/\s(?:on\s)?([a-z]{3})[a-z]*\s(\d{1,2})(?:st|nd|rd|th)?(?=\s)/g,(m,mo,d)=>ENMON.includes(mo)?` ${d} ${RUMON[ENMON.indexOf(mo)]}`:m],
+    [/\s(?:on\s)?(?:the\s)?(\d{1,2})(?:st|nd|rd|th)(?=\s)/g," $1 числа"],
+    [/\s(?:on\s)?(?:(next|this)\s)?([a-z]+)(?=\s)/g,(m,nx,w)=>ENWD[w]?` ${nx==="next"?"следующий ":""}${ENWD[w]}`:m],
+  ];
+  for(const [re,to] of rules)t=t.replace(re,to);
+  return t.replace(/\s+/g," ").trim();
+}
 function parseQuick(raw,now=new Date()){
   let t=" "+raw.toLowerCase().replace(/ё/g,"е").replace(/[,!?;]/g," ").replace(/\s+/g," ").trim()+" ";
+  t=" "+enToRu(t.trim())+" ";
   /* spoken lead-ins: "добавь", "поставь мне", "прошу записать", "пожалуйста" … */
   const LEAD=/^(?:пожалуйста|плиз|прошу|можешь|можно|давай|ну|так|ок|окей|слушай|мне|себе|еще|ещё|пж|добавь|добавить|добавляй|поставь|поставить|поставьте|запиши|записать|запишите|внеси|внести|создай|создать|сделай|назначь|назначить|запланируй|запланировать|напиши|отметь|занеси|забей|кинь|закинь|новое|новую|дело|событие|встречу)\s+/;
   t=t.trim();let lead=false;for(let k=0;k<6;k++){const n=t.replace(LEAD,"");if(n===t||!n.trim())break;t=n;lead=true}
@@ -724,8 +763,10 @@ function parseQuick(raw,now=new Date()){
       const re=new RegExp(`\\s(?:(?:в|во|на|к)\\s)?(?:(следующ[а-я]*|этот|эту|это)\\s)?(?:${full}[а-я]*|${short})\\s`);
       if((m=cut(re))){
         const cur=(today.getDay()+6)%7;let add=(d-cur+7)%7;
-        if(m[1]&&m[1].startsWith("следующ"))add+=add===0?7:7;
-        date=addDays(today,add);break;
+        date=addDays(today,add);
+        /* "следующий / next X": the X of next week */
+        if(m[1]&&m[1].startsWith("следующ")&&iso(monday(date))===iso(monday(today)))date=addDays(date,7);
+        break;
       }
     }
   }
@@ -745,7 +786,7 @@ function parseQuick(raw,now=new Date()){
 
   /* title = what is left */
   /* drop little words that belonged to a removed part ("на |", "в |") and stray "|" */
-  const FILL="(?:на|в|во|к|с|до|и|числа)";
+  const FILL="(?:на|в|во|к|с|до|и|числа|on|at|for|in|to|the|a|an|and)";
   for(let k=0;k<3;k++)t=t.replace(new RegExp(`\\s${FILL}\\s(?=\\|)`,"g")," ").replace(new RegExp(`\\|\\s${FILL}\\s(?=\\||$)`,"g"),"| ");
   let title=t.replace(/\|/g," ").replace(/\s+/g," ").trim().replace(new RegExp(`^${FILL}\\s|\\s${FILL}$`,"g"),"").trim();
   if(lead)title=title.replace(/^([а-я]{3,}[^аеиоуыэюя\s])у(?=\s|$)/,"$1а").replace(/^([а-я]{3,}[иь])ю(?=\s|$)/,"$1я");
@@ -817,13 +858,16 @@ $("q-prev").onclick=()=>{
 /* voice input: Safari / Chrome speech recognition → the quick-add line */
 (()=>{
   const SR=window.SpeechRecognition||window.webkitSpeechRecognition,btn=$("q-mic");
+  let vlang=(()=>{try{return localStorage.getItem("voiceLang")}catch(e){return null}})()||"ru";
+  const paintL=()=>{$("q-lng").textContent=vlang.toUpperCase()};paintL();
+  $("q-lng").onclick=()=>{vlang=vlang==="ru"?"en":"ru";paintL();try{localStorage.setItem("voiceLang",vlang)}catch(e){}};
   let rec=null;
   const note=t=>{const el=$("q-prev");el.hidden=false;el.textContent=t;document.documentElement.style.setProperty("--topH",$("top").offsetHeight+"px")};
   btn.onclick=()=>{
     if(rec){rec.stop();return}
     if(!SR){$("q").focus();note("Здесь нет встроенного распознавания. Нажмите микрофон на клавиатуре и продиктуйте.");return}
     try{rec=new SR()}catch(e){rec=null;$("q").focus();note("Нажмите микрофон на клавиатуре и продиктуйте.");return}
-    rec.lang="ru-RU";rec.interimResults=true;rec.continuous=false;rec.maxAlternatives=1;
+    rec.lang=vlang==="en"?"en-US":"ru-RU";rec.interimResults=true;rec.continuous=false;rec.maxAlternatives=1;
     const before=$("q").value.trim();
     rec.onresult=ev=>{let t="";for(const r of ev.results)t+=r[0].transcript;$("q").value=(before?before+" ":"")+t.trim();quickPreview()};
     rec.onerror=ev=>{
@@ -895,7 +939,7 @@ onAuthStateChanged(auth,user=>{
 });
 
 /* ---------- offline copy + auto-update ---------- */
-const BUILD="20261005223902";
+const BUILD="20261005224126";
 async function checkVersion(){
   if(!navigator.onLine)return;
   try{const r=await fetch("version.txt?t="+Date.now(),{cache:"no-store"});if(!r.ok)return;
