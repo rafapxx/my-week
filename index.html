@@ -147,20 +147,21 @@ input::-webkit-calendar-picker-indicator{filter:invert(1);opacity:.5}
 .sw input:checked{background:var(--neon);box-shadow:var(--glow)}
 
 /* colors, templates, duration */
-.ev{--c:#f2f2f2;background:color-mix(in srgb,var(--c) 13%,#0b0b0b);border-color:color-mix(in srgb,var(--c) 55%,transparent);box-shadow:0 0 8px color-mix(in srgb,var(--c) 22%,transparent)}
-.ev:hover{border-color:var(--c);box-shadow:0 0 10px color-mix(in srgb,var(--c) 55%,transparent)}
-.ev .ck{box-shadow:inset 0 0 0 1px var(--c)}
-.ev.done .ck{background:var(--c);box-shadow:0 0 6px var(--c)}
-.allday{--c:#f2f2f2;border-left-color:var(--c);background:color-mix(in srgb,var(--c) 13%,#0b0b0b)}
+.ev{--c:#f2f2f2;background:var(--c);border-color:transparent;box-shadow:none;color:#0b0b0b}
+.ev .t{color:rgba(0,0,0,.6)}
+.ev:hover{border-color:transparent;box-shadow:none;filter:brightness(1.08)}
+.ev .ck{box-shadow:inset 0 0 0 1.5px rgba(0,0,0,.55)}
+.ev.done .ck{background:#0b0b0b;box-shadow:none}
+.allday{--c:#f2f2f2;border-left:0;background:var(--c);color:#0b0b0b}
 #f-title{border-left:3px solid var(--c,#f2f2f2)}
 .colors{display:flex;gap:10px;flex-wrap:wrap}
-.cl{width:26px;height:26px;border-radius:50%;background:var(--c);box-shadow:0 0 6px color-mix(in srgb,var(--c) 50%,transparent)}
-.cl.on{outline:2px solid var(--c);outline-offset:3px;box-shadow:0 0 12px var(--c)}
+.cl{width:26px;height:26px;border-radius:50%;background:var(--c)}
+.cl.on{outline:2px solid var(--c);outline-offset:3px}
 .tpls{display:flex;gap:8px;overflow-x:auto;scrollbar-width:none;margin-bottom:2px}
 .tpls::-webkit-scrollbar{display:none}
-.tp{flex:none;display:inline-flex;align-items:center;gap:8px;padding:7px 10px 7px 12px;border-radius:999px;border:1px solid color-mix(in srgb,var(--c) 60%,transparent);background:color-mix(in srgb,var(--c) 12%,#0b0b0b);font-size:.85rem;white-space:nowrap}
-.tp .x{color:var(--muted);font-size:.9rem;padding:0 2px}
-.tp .x.armed{color:var(--now);font-size:.75rem}
+.tp{flex:none;display:inline-flex;align-items:center;gap:8px;padding:7px 10px 7px 12px;border-radius:999px;border:0;background:var(--c);color:#0b0b0b;font-size:.85rem;white-space:nowrap}
+.tp .x{color:rgba(0,0,0,.55);font-size:.9rem;padding:0 2px}
+.tp .x.armed{color:#0b0b0b;font-weight:600;font-size:.75rem}
 .ends{font-size:.75rem;color:var(--muted);margin-top:6px}
 .presets{display:flex;gap:6px;flex-wrap:wrap}
 .ps{padding:6px 10px;border-radius:8px;border:1px solid var(--line-h);font-size:.8rem;color:var(--muted)}
@@ -620,7 +621,7 @@ onAuthStateChanged(auth,user=>{
 });
 
 /* ---------- offline copy + auto-update ---------- */
-const BUILD="20261005202225";
+const BUILD="20261005202846";
 async function checkVersion(){
   if(!navigator.onLine)return;
   try{const r=await fetch("version.txt?t="+Date.now(),{cache:"no-store"});if(!r.ok)return;
