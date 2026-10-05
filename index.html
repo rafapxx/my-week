@@ -807,10 +807,18 @@ function applySfx(h,s){
 function quickParse(){
   const v=$("q").value.trim();if(!v)return null;
   const r=parseQuick(v);if(!r.title)return null;
-  const tpl=templates.find(t=>t.title.toLowerCase()===r.title.toLowerCase());
+  /* saved template: exact title first, then by word stem ("боксу", "тренировку по боксу", "бокс с Иваном") */
+  const norm=x=>x.toLowerCase().replace(/ё/g,"е").trim();
+  const stem=w=>w.length>4?w.slice(0,-2):w.length>3?w.slice(0,-1):w;
+  let tpl=templates.find(t=>norm(t.title)===norm(r.title)),exact=!!tpl;
+  if(!tpl){
+    const words=norm(r.title).split(/\s+/);
+    tpl=templates.filter(t=>{const tw=norm(t.title).split(/\s+/);return tw.every(x=>words.some(w=>w.startsWith(stem(x))))})
+      .sort((a,b)=>b.title.length-a.title.length)[0];
+  }
   const allDay=r.start==null;
   const dur=r.dur??tpl?.dur??60;
-  return {title:tpl?tpl.title:r.title,date:r.date,start:r.start,dur,allDay,color:tpl?.color||"white"};
+  return {title:tpl&&exact?tpl.title:r.title,date:r.date,start:r.start,dur,allDay,color:tpl?.color||"white"};
 }
 function quickPreview(){
   const p=quickParse(),el=$("q-prev");
@@ -939,7 +947,7 @@ onAuthStateChanged(auth,user=>{
 });
 
 /* ---------- offline copy + auto-update ---------- */
-const BUILD="20261005224126";
+const BUILD="20261005224359";
 async function checkVersion(){
   if(!navigator.onLine)return;
   try{const r=await fetch("version.txt?t="+Date.now(),{cache:"no-store"});if(!r.ok)return;
