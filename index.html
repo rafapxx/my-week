@@ -674,15 +674,33 @@ function wordsToDigits(t){
 
 function parseQuick(raw,now=new Date()){
   let t=" "+raw.toLowerCase().replace(/ё/g,"е").replace(/[,!?;]/g," ").replace(/\s+/g," ").trim()+" ";
+  /* spoken lead-ins: "добавь", "поставь мне", "прошу записать", "пожалуйста" … */
+  const LEAD=/^(?:пожалуйста|плиз|прошу|можешь|можно|давай|ну|так|ок|окей|слушай|мне|себе|еще|ещё|пж|добавь|добавить|добавляй|поставь|поставить|поставьте|запиши|записать|запишите|внеси|внести|создай|создать|сделай|назначь|назначить|запланируй|запланировать|напиши|отметь|занеси|забей|кинь|закинь|новое|новую|дело|событие|встречу)\s+/;
+  t=t.trim();let lead=false;for(let k=0;k<6;k++){const n=t.replace(LEAD,"");if(n===t||!n.trim())break;t=n;lead=true}
+  /* after "добавь …" the noun comes in accusative: "математику" → "математика", "лекцию" → "лекция" */
+  t=" "+t+" ";
+  t=t.replace(/\sпожалуйста(?=\s|$)/g," ");
   t=" "+wordsToDigits(t.trim())+" ";
   const cut=re=>{const m=t.match(re);if(m)t=t.replace(m[0]," | ");return m};
   const today=new Date(now.getFullYear(),now.getMonth(),now.getDate());
   let dur=null,date=null,hh=null,mm=0,m;
 
+  /* duration as one word: "четырехчасовой", "2-часовая", "получасовой", "сорокапятиминутная" */
+  const PRE={"":1,"одно":1,"двух":2,"трех":3,"четырех":4,"пяти":5,"шести":6,"семи":7,"восьми":8,"девяти":9,"десяти":10,"одиннадцати":11,"двенадцати":12,"полутора":1.5,"полу":0.5,
+    "пятнадцати":15,"двадцати":20,"тридцати":30,"сорока":40,"сорокапяти":45,"пятидесяти":50,"девяноста":90};
+  if((m=t.match(/\s(?:(\d+)-?|([а-я]*?))(часов|минутн)(?:ой|ая|ое|ую|ый|ые|ого|ых)\s/))&&(m[1]||PRE[m[2]]!=null)){
+    const n=m[1]?+m[1]:PRE[m[2]];
+    t=t.replace(m[0]," | ");dur=Math.round(m[3]==="часов"?n*60:n);
+  }
   /* duration */
-  if(cut(/\s(?:на\s)?полтора\sчаса\s/))dur=90;
+  if(dur!=null){}
+  else if(cut(/\s(?:на\s)?полтора\sчаса\s/))dur=90;
   else if(cut(/\s(?:на\s)?полчаса\s/))dur=30;
-  else if((m=cut(/(?<!\s(?:в|во|к|с))\s(?:на\s)?(\d+(?:[.,]\d+)?)\s?(?:ч|час|часа|часов)(?:\s(\d+)\s?(?:м|мин|минут|минуты))?\s/)))dur=Math.round(parseFloat(m[1].replace(",","."))*60)+(m[2]?+m[2]:0);
+  else if((m=t.match(/(?<!\s(?:в|во|к|с))\s(?:на\s)?(\d+(?:[.,]\d+)?)\s?(?:ч|час|часа|часов)(?:\s(\d+)\s?(?:м|мин|минут|минуты))?\s(?!(?:утра|дня|вечера|ночи)\s)/))
+          &&parseFloat(m[1].replace(",","."))<=12){
+    /* "на 2 часа" is a duration; "на 16 часов" / "на 10 часов утра" stay for the time rule */
+    t=t.replace(m[0]," | ");dur=Math.round(parseFloat(m[1].replace(",","."))*60)+(m[2]?+m[2]:0);
+  }
   else if((m=cut(/\s(?:на\s)?(\d+)\s?(?:м|мин|минут|минуты|минуту)\s/)))dur=+m[1];
   else if(cut(/\sна\sчас\s/))dur=60;
 
@@ -730,6 +748,7 @@ function parseQuick(raw,now=new Date()){
   const FILL="(?:на|в|во|к|с|до|и|числа)";
   for(let k=0;k<3;k++)t=t.replace(new RegExp(`\\s${FILL}\\s(?=\\|)`,"g")," ").replace(new RegExp(`\\|\\s${FILL}\\s(?=\\||$)`,"g"),"| ");
   let title=t.replace(/\|/g," ").replace(/\s+/g," ").trim().replace(new RegExp(`^${FILL}\\s|\\s${FILL}$`,"g"),"").trim();
+  if(lead)title=title.replace(/^([а-я]{3,}[^аеиоуыэюя\s])у(?=\s|$)/,"$1а").replace(/^([а-я]{3,}[иь])ю(?=\s|$)/,"$1я");
   /* restore the user's own capital letters */
   const orig=raw.trim().split(/\s+/);
   title=title.split(" ").map(w=>orig.find(o=>o.toLowerCase().replace(/ё/g,"е").replace(/[,!?;]/g,"")===w)?.replace(/[,!?;]/g,"")||w).join(" ");
@@ -876,7 +895,7 @@ onAuthStateChanged(auth,user=>{
 });
 
 /* ---------- offline copy + auto-update ---------- */
-const BUILD="20261005212559";
+const BUILD="20261005223902";
 async function checkVersion(){
   if(!navigator.onLine)return;
   try{const r=await fetch("version.txt?t="+Date.now(),{cache:"no-store"});if(!r.ok)return;
