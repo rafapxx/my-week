@@ -177,6 +177,11 @@ body{font-weight:600}
 .range{font-size:1.08rem}
 .tab b{font-size:1.1rem}
 input,select,button{font-weight:inherit}
+
+/* hold-to-add */
+.col{-webkit-touch-callout:none;-webkit-user-select:none;user-select:none}
+.ghost{position:absolute;left:2px;right:2px;z-index:1;border:1px dashed var(--neon,#fff);border-radius:6px;background:rgba(255,255,255,.08);
+  font-size:.7rem;color:var(--fg);padding:2px 6px;pointer-events:none;box-shadow:var(--glow)}
 body.daymode .tabs{display:grid}
 .seg{display:flex;background:var(--field);border:1px solid var(--line-h);border-radius:9px;padding:2px;margin-left:auto}
 .seg button{padding:5px 9px;border-radius:7px;font-size:.78rem;color:var(--muted)}
@@ -304,6 +309,21 @@ function timesEl(h){const t=document.createElement("div");t.className="times";t.
 function colEl(w,start,i,h){
   const isToday=iso(addDays(start,i))===iso(new Date());
   const col=document.createElement("div");col.className="col"+(isToday?" today":"");
+  /* hold on an empty spot ≈0.5 s → new event at that time, snapped to 30 min */
+  let hold=null;
+  const cancel=()=>{if(hold){clearTimeout(hold.t1);clearTimeout(hold.t2);hold.g?.remove();hold=null}};
+  col.addEventListener("pointerdown",ev=>{
+    if(ev.target!==col||ev.button>0)return;
+    const y=ev.clientY-col.getBoundingClientRect().top,m=Math.min(1410,Math.max(0,Math.floor(y/(h/2))*30));
+    hold={x:ev.clientX,y:ev.clientY};
+    hold.t1=setTimeout(()=>{if(!hold)return;const g=document.createElement("div");g.className="ghost";
+      g.style.top=(m/60*h)+"px";g.style.height=(h/2)+"px";g.textContent=fmt(m);col.append(g);hold.g=g},180);
+    hold.t2=setTimeout(()=>{cancel();navigator.vibrate?.(10);openEditor(null,w,start,i,fmt(m),fmt(Math.min(1439,m+60)))},550);
+  });
+  col.addEventListener("pointermove",ev=>{if(hold&&Math.hypot(ev.clientX-hold.x,ev.clientY-hold.y)>8)cancel()});
+  ["pointerup","pointercancel","pointerleave"].forEach(t=>col.addEventListener(t,cancel));
+  col.addEventListener("scroll",cancel);addEventListener("scroll",cancel,{passive:true,once:true});
+  col.addEventListener("contextmenu",ev=>ev.preventDefault());
   for(const it of lanes(w.events.filter(x=>x.day===i&&x.start))){
     const e=it.e,dur=it.en-it.s;
     const el=document.createElement("div");el.className="ev"+(e.done?" done":"")+(dur<45?" short":"");el.style.setProperty("--c",colorOf(e.color));
@@ -669,7 +689,7 @@ onAuthStateChanged(auth,user=>{
 });
 
 /* ---------- offline copy + auto-update ---------- */
-const BUILD="20261005203405";
+const BUILD="20261005210350";
 async function checkVersion(){
   if(!navigator.onLine)return;
   try{const r=await fetch("version.txt?t="+Date.now(),{cache:"no-store"});if(!r.ok)return;
