@@ -503,6 +503,15 @@ onAuthStateChanged(auth,user=>{
 });
 
 /* ---------- offline copy + auto-update ---------- */
+const BUILD="20261005192122";
+async function checkVersion(){
+  if(!navigator.onLine)return;
+  try{const r=await fetch("version.txt?t="+Date.now(),{cache:"no-store"});if(!r.ok)return;
+    const v=(await r.text()).trim();if(v&&v!==BUILD&&!$("modal").children.length)location.reload()}catch(e){}
+}
+document.addEventListener("visibilitychange",()=>{if(!document.hidden)checkVersion()});
+addEventListener("online",checkVersion);
+setTimeout(checkVersion,3000);
 if("serviceWorker" in navigator){
   let reloaded=false;const had=!!navigator.serviceWorker.controller;
   navigator.serviceWorker.addEventListener("controllerchange",()=>{if(had&&!reloaded){reloaded=true;location.reload()}});

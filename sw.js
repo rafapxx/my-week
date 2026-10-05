@@ -1,6 +1,6 @@
 // Offline copy of the app. Own files: network first (always fresh when online), cache when offline.
 // Firebase SDK files from gstatic: cache first (they never change for a pinned version).
-const VERSION = "v1";
+const VERSION = "v2";
 const CACHE = "my-week-" + VERSION;
 const OWN = ["./", "index.html", "manifest.webmanifest", "icon-180.png", "icon-192.png", "icon-512.png"];
 const SDK = "https://www.gstatic.com/firebasejs/11.0.2/";
