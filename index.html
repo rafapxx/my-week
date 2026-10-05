@@ -231,7 +231,7 @@ body.daymode .tabs{display:grid}
       </div>
     </div>
     <form class="quick" id="qf" autocomplete="off">
-      <input id="q" placeholder="Бокс в пятницу в 15:30 на полтора часа" enterkeyhint="done" aria-label="Быстро добавить дело">
+      <input id="q" placeholder="Добавление текстом" enterkeyhint="done" aria-label="Быстро добавить дело">
       <button type="submit" id="q-go" hidden>Добавить</button>
     </form>
     <button type="button" class="qprev" id="q-prev" hidden></button>
@@ -847,7 +847,7 @@ onAuthStateChanged(auth,user=>{
 });
 
 /* ---------- offline copy + auto-update ---------- */
-const BUILD="20261005210837";
+const BUILD="20261005211253";
 async function checkVersion(){
   if(!navigator.onLine)return;
   try{const r=await fetch("version.txt?t="+Date.now(),{cache:"no-store"});if(!r.ok)return;
