@@ -8,6 +8,9 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Неделя">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Nunito:wght@500;600;700;800;900&display=swap">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="icon-180.png">
 <link rel="icon" href="icon-192.png">
@@ -16,7 +19,7 @@
 :root{
   --bg:#000; --line:#1f1f1f; --line-h:#2c2c2c; --fg:#f2f2f2; --muted:#7c7c7c; --dim:#4a4a4a; --field:#0e0e0e;
   --ev:#1b1b1b; --ev-b:#3a3a3a; --now:#e5484d;
-  --f:-apple-system,BlinkMacSystemFont,"SF Pro Text","Helvetica Neue",Helvetica,Arial,sans-serif;
+  --f:"Nunito",ui-rounded,"SF Pro Rounded",-apple-system,BlinkMacSystemFont,sans-serif;
   --h:48px; --tc:44px; --lab:34px; --topH:60px;
   color-scheme:dark;
 }
@@ -167,6 +170,13 @@ input::-webkit-calendar-picker-indicator{filter:invert(1);opacity:.5}
 .ps{padding:6px 10px;border-radius:8px;border:1px solid var(--line-h);font-size:.8rem;color:var(--muted)}
 .ps.on{color:var(--bg);background:var(--neon);border-color:var(--neon);box-shadow:var(--glow)}
 .wheel:not(.h):not(.m){flex:1 1 0}
+
+/* soft rounded type */
+body{font-weight:600}
+.range,.tab b,.hd b,.lab b,.login h1,.save,.ev .n{font-weight:800}
+.range{font-size:1.08rem}
+.tab b{font-size:1.1rem}
+input,select,button{font-weight:inherit}
 @media (max-width:700px){
   .tabs{display:grid}
   :root{--h:56px;--tc:40px}
@@ -621,7 +631,7 @@ onAuthStateChanged(auth,user=>{
 });
 
 /* ---------- offline copy + auto-update ---------- */
-const BUILD="20261005202846";
+const BUILD="20261005203118";
 async function checkVersion(){
   if(!navigator.onLine)return;
   try{const r=await fetch("version.txt?t="+Date.now(),{cache:"no-store"});if(!r.ok)return;
