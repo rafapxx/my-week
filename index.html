@@ -1,0 +1,383 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#000000">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Неделя">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="icon" href="icon-192.png">
+<title>Моя неделя</title>
+<style>
+:root{
+  --bg:#000; --line:#1f1f1f; --line-h:#2c2c2c; --fg:#f2f2f2; --muted:#7c7c7c; --dim:#4a4a4a; --field:#0e0e0e;
+  --ev:#1b1b1b; --ev-b:#3a3a3a; --now:#e5484d;
+  --f:-apple-system,BlinkMacSystemFont,"SF Pro Text","Helvetica Neue",Helvetica,Arial,sans-serif;
+  --h:48px; --tc:44px; --lab:34px; --topH:60px;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);overflow-anchor:none}
+body{color:var(--fg);font-family:var(--f);font-size:14px;line-height:1.35;-webkit-font-smoothing:antialiased;-webkit-tap-highlight-color:transparent}
+button{font:inherit;color:inherit;cursor:pointer;background:none;border:0;padding:0}
+:focus-visible{outline:1px solid var(--fg);outline-offset:2px}
+[hidden]{display:none!important}
+.app{max-width:1400px;margin:0 auto;padding-inline:max(16px,env(safe-area-inset-left));padding-bottom:calc(40px + env(safe-area-inset-bottom))}
+
+.top{position:sticky;top:0;z-index:6;background:var(--bg);padding-top:calc(12px + env(safe-area-inset-top));border-bottom:1px solid var(--line-h)}
+.bar{display:flex;align-items:center;gap:12px;padding-bottom:10px}
+.range{font-size:1rem;font-weight:500;font-variant-numeric:tabular-nums}
+.dot{width:6px;height:6px;border-radius:50%;background:var(--dim);flex:none}
+.dot[data-s="live"]{background:var(--fg)}
+.dot[data-s="off"]{background:var(--now)}
+.nav{margin-left:auto;display:flex;gap:2px}
+.nav button{min-width:36px;height:36px;padding:0 10px;color:var(--muted);border-radius:8px}
+.nav button:hover{color:var(--fg);background:var(--field)}
+.tabs{display:none;grid-template-columns:repeat(7,1fr);gap:2px;padding-bottom:8px}
+.tab{display:flex;flex-direction:column;align-items:center;gap:2px;padding:6px 0;border-radius:8px;color:var(--muted);font-size:.72rem}
+.tab b{font-weight:500;font-size:1rem;color:var(--fg);font-variant-numeric:tabular-nums}
+.tab.sel{background:var(--fg);color:var(--bg)}
+.tab.sel b{color:var(--bg)}
+.tab.today:not(.sel) b{color:var(--now)}
+
+.times{position:relative}
+.times span{position:absolute;right:8px;transform:translateY(-50%);font-size:.68rem;color:var(--muted);font-variant-numeric:tabular-nums}
+.col{position:relative;height:calc(var(--h) * 24);border-left:1px solid var(--line);cursor:cell;
+  background-image:linear-gradient(var(--line-h) 1px,transparent 1px),linear-gradient(var(--line) 1px,transparent 1px);
+  background-size:100% var(--h),100% calc(var(--h) / 2)}
+.col.today{background-color:#070707}
+.now{position:absolute;left:-1px;right:0;height:2px;background:var(--now);z-index:2;pointer-events:none}
+.now::before{content:"";position:absolute;left:-4px;top:-3px;width:8px;height:8px;border-radius:50%;background:var(--now)}
+.ev{position:absolute;z-index:1;padding:3px 6px;border-radius:6px;background:var(--ev);border:1px solid var(--ev-b);overflow:hidden;cursor:pointer;text-align:left;display:flex;flex-direction:column;gap:1px;min-width:0}
+.ev:hover{border-color:var(--muted)}
+.ev .t{font-size:.68rem;color:var(--muted);font-variant-numeric:tabular-nums;white-space:nowrap}
+.ev .n{font-size:.8rem;overflow-wrap:anywhere}
+.ev.short{flex-direction:row;align-items:baseline;gap:6px}
+.ev.short .n{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ev.done{opacity:.45}
+.ev.done .n{text-decoration:line-through}
+.ev .ck{position:absolute;top:4px;right:4px;width:12px;height:12px;border-radius:50%;box-shadow:inset 0 0 0 1px var(--muted)}
+.ev.done .ck{background:var(--fg);box-shadow:none}
+.ev .n,.ev .t{padding-right:14px}
+.allday{flex:none;font-size:.75rem;background:var(--ev);border-left:2px solid var(--muted);border-radius:4px;padding:2px 6px;text-align:left;white-space:nowrap;max-width:100%;overflow:hidden;text-overflow:ellipsis}
+.allday.done{opacity:.45;text-decoration:line-through}
+
+.wk-head,.wk-body{display:grid;grid-template-columns:var(--tc) repeat(7,minmax(0,1fr))}
+.wk-head{position:sticky;top:var(--topH);z-index:4;background:var(--bg);border-bottom:1px solid var(--line-h)}
+.hc{padding:8px 6px 6px;border-left:1px solid var(--line);min-width:0;display:flex;flex-direction:column;gap:4px}
+.hd{display:flex;align-items:baseline;gap:6px;color:var(--muted);font-size:.75rem}
+.hd b{font-weight:500;font-size:1.05rem;color:var(--fg);font-variant-numeric:tabular-nums}
+.hc.today .hd b{color:var(--now)}
+
+.day{display:grid;grid-template-columns:var(--tc) minmax(0,1fr)}
+.lab{grid-column:1/-1;height:var(--lab);display:flex;align-items:center;gap:8px;border-top:1px solid var(--line-h);overflow-x:auto;scrollbar-width:none;color:var(--muted);font-size:.75rem;white-space:nowrap}
+.lab::-webkit-scrollbar{display:none}
+.lab b{color:var(--fg);font-weight:500;font-size:.9rem}
+.day.today .lab b{color:var(--now)}
+.foot{padding:24px 0;text-align:center}
+.foot button{color:var(--dim);font-size:.75rem}
+
+.back{position:fixed;inset:0;background:rgba(0,0,0,.75);display:flex;align-items:flex-end;justify-content:center;z-index:10}
+.sheet{width:100%;max-width:440px;background:#111;border-radius:14px 14px 0 0;padding:18px 16px calc(18px + env(safe-area-inset-bottom));display:flex;flex-direction:column;gap:12px}
+@media (min-width:701px){.back{align-items:center}.sheet{border-radius:14px}}
+input,select{font:inherit;font-size:16px;color:var(--fg);background:var(--field);border:1px solid var(--line-h);border-radius:8px;padding:10px 12px;width:100%;min-width:0}
+input:focus,select:focus{outline:none;border-color:var(--muted)}
+input::-webkit-calendar-picker-indicator{filter:invert(1);opacity:.5}
+.row{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px}
+.hint{font-size:.72rem;color:var(--muted);margin-top:-4px}
+.acts{display:flex;align-items:center;gap:16px}
+.acts .link{color:var(--muted);font-size:.85rem}
+.acts .link:hover{color:var(--fg)}
+.save{margin-left:auto;background:var(--fg);color:var(--bg);border-radius:8px;padding:10px 18px;font-weight:500}
+
+.login{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px 16px}
+.login form{width:100%;max-width:340px;display:flex;flex-direction:column;gap:12px}
+.login h1{font-weight:500;font-size:1.4rem;margin:0 0 8px}
+.login .err{color:var(--now);font-size:.8rem;min-height:1em}
+.login .save{margin-left:0}
+.boot{min-height:100vh;display:grid;place-items:center;color:var(--dim)}
+
+@media (max-width:700px){
+  .tabs{display:grid}
+  :root{--h:56px;--tc:40px}
+}
+</style>
+</head>
+<body>
+<div class="boot" id="boot">Загружаю…</div>
+
+<div class="login" id="login" hidden>
+  <form id="lf">
+    <h1>Моя неделя</h1>
+    <input id="l-email" type="email" autocomplete="username" placeholder="Почта" required>
+    <input id="l-pass" type="password" autocomplete="current-password" placeholder="Пароль" required>
+    <div class="err" id="l-err"></div>
+    <button type="submit" class="save">Войти</button>
+  </form>
+</div>
+
+<div class="app" id="app" hidden>
+  <div class="top" id="top">
+    <div class="bar">
+      <span class="dot" id="dot" title="Подключаюсь"></span>
+      <span class="range" id="range"></span>
+      <div class="nav">
+        <button id="prev" aria-label="Предыдущая неделя">←</button>
+        <button id="now">Сегодня</button>
+        <button id="next" aria-label="Следующая неделя">→</button>
+      </div>
+    </div>
+    <div class="tabs" id="tabs"></div>
+  </div>
+  <div id="view"></div>
+  <div class="foot"><button id="logout">Выйти</button></div>
+</div>
+<div id="modal"></div>
+
+<script type="module">
+import {initializeApp} from "https://www.gstatic.com/firebasejs/11.0.2/firebase-app.js";
+import {getAuth,onAuthStateChanged,signInWithEmailAndPassword,signOut} from "https://www.gstatic.com/firebasejs/11.0.2/firebase-auth.js";
+import {initializeFirestore,persistentLocalCache,persistentMultipleTabManager,doc,onSnapshot,setDoc} from "https://www.gstatic.com/firebasejs/11.0.2/firebase-firestore.js";
+
+const firebaseConfig={
+  apiKey:"AIzaSyCS-a6ROL_7dvV9VxabCHjqT1R4e8bkT9w",
+  authDomain:"timetablerafael.firebaseapp.com",
+  projectId:"timetablerafael",
+  storageBucket:"timetablerafael.firebasestorage.app",
+  messagingSenderId:"830920379530",
+  appId:"1:830920379530:web:941eb5b8a83fee6370f173"
+};
+const fbApp=initializeApp(firebaseConfig);
+const auth=getAuth(fbApp);
+const fs=initializeFirestore(fbApp,{localCache:persistentLocalCache({tabManager:persistentMultipleTabManager()})});
+
+const DAYS=["Пн","Вт","Ср","Чт","Пт","Сб","Вс"];
+const MON=["янв","фев","мар","апр","мая","июн","июл","авг","сен","окт","ноя","дек"];
+const $=id=>document.getElementById(id);
+const pad=n=>String(n).padStart(2,"0");
+const iso=d=>d.getFullYear()+"-"+pad(d.getMonth()+1)+"-"+pad(d.getDate());
+const toMin=t=>{if(!t)return null;const[a,b]=t.split(":");return +a*60+ +b};
+const fmt=m=>pad(Math.floor(m/60))+":"+pad(m%60);
+const addDays=(d,n)=>{const x=new Date(d);x.setDate(x.getDate()+n);return x};
+function monday(d){const x=new Date(d.getFullYear(),d.getMonth(),d.getDate());x.setDate(x.getDate()-(x.getDay()+6)%7);return x}
+const mq=matchMedia("(max-width:700px)");
+const cssPx=v=>parseFloat(getComputedStyle(document.documentElement).getPropertyValue(v))||0;
+
+let uid=null;
+const weeks=new Map();
+let weekStart=monday(new Date());
+let rangeStart=addDays(weekStart,-7),rangeLen=3;
+let visible={k:iso(weekStart),d:(new Date().getDay()+6)%7};
+
+/* ---------- storage: users/{uid}/weeks/{monday} ---------- */
+function syncState(){
+  const pending=[...weeks.values()].some(w=>w.pending);
+  if(!navigator.onLine)return setDot("off","Офлайн: изменения сохранены на устройстве и отправятся, когда появится интернет");
+  setDot(pending?"wait":"live",pending?"Отправляю":"Синхронизировано");
+}
+function setDot(s,t){$("dot").dataset.s=s;$("dot").title=t}
+addEventListener("online",syncState);addEventListener("offline",syncState);
+function week(start){
+  const k=iso(start);if(weeks.has(k))return weeks.get(k);
+  const w={k,events:[],pending:false,ref:doc(fs,"users",uid,"weeks",k)};weeks.set(k,w);
+  w.unsub=onSnapshot(w.ref,{includeMetadataChanges:true},s=>{
+    const d=s.exists()?s.data():null;
+    w.events=d&&Array.isArray(d.events)?d.events.map(e=>({...e})):[];
+    w.pending=s.metadata.hasPendingWrites;
+    schedule();syncState();
+  },()=>setDot("off","Нет доступа к базе. Проверьте правила Firestore"));
+  return w;
+}
+function save(w){
+  w.pending=true;syncState();
+  setDoc(w.ref,{events:w.events.map(e=>({...e})),updatedAt:new Date().toISOString()}).catch(()=>setDot("off","Не сохранилось"));
+}
+let raf=0;function schedule(){if(!raf)raf=requestAnimationFrame(()=>{raf=0;render()})}
+
+/* ---------- layout ---------- */
+function span(e){const s=toMin(e.start);let en=toMin(e.end);if(en==null)en=s+60;if(en<=s)en=s+30;return [s,Math.min(en,1440)]}
+function lanes(list){
+  const items=list.map(e=>{const[s,en]=span(e);return{e,s,en}}).sort((a,b)=>a.s-b.s||b.en-a.en);
+  let cluster=[],ends=[],cEnd=-1;
+  const flush=()=>{cluster.forEach(it=>it.n=ends.length);cluster=[];ends=[]};
+  for(const it of items){
+    if(it.s>=cEnd&&cluster.length)flush();
+    let l=ends.findIndex(x=>x<=it.s);if(l<0){l=ends.length;ends.push(0)}
+    ends[l]=it.en;it.l=l;cluster.push(it);cEnd=Math.max(cEnd,it.en);
+  }
+  flush();return items;
+}
+function timesEl(h){const t=document.createElement("div");t.className="times";t.style.height=(24*h)+"px";
+  for(let k=1;k<24;k++){const s=document.createElement("span");s.style.top=(k*h)+"px";s.textContent=pad(k)+":00";t.append(s)}return t}
+function colEl(w,start,i,h){
+  const isToday=iso(addDays(start,i))===iso(new Date());
+  const col=document.createElement("div");col.className="col"+(isToday?" today":"");
+  col.onclick=ev=>{if(ev.target!==col)return;const m=Math.min(1410,Math.floor(ev.offsetY/(h/2))*30);openEditor(null,w,start,i,fmt(m),fmt(Math.min(1439,m+60)))};
+  for(const it of lanes(w.events.filter(x=>x.day===i&&x.start))){
+    const e=it.e,dur=it.en-it.s;
+    const el=document.createElement("div");el.className="ev"+(e.done?" done":"")+(dur<45?" short":"");
+    el.style.top=(it.s/60*h)+"px";el.style.height=Math.max(dur/60*h-2,18)+"px";
+    el.style.left=`calc(${it.l*100/it.n}% + 2px)`;el.style.width=`calc(${100/it.n}% - 4px)`;
+    const t=document.createElement("span");t.className="t";t.textContent=e.start+(e.end?"–"+e.end:"");
+    const n=document.createElement("span");n.className="n";n.textContent=e.title;
+    const ck=document.createElement("button");ck.className="ck";ck.setAttribute("aria-label",e.done?"Снять отметку":"Готово");
+    ck.onclick=ev=>{ev.stopPropagation();e.done=!e.done;save(w);render()};
+    el.append(t,n,ck);el.onclick=()=>openEditor(e,w,start);
+    col.append(el);
+  }
+  if(isToday){const n=document.createElement("div");n.className="now";const now=new Date();n.style.top=((now.getHours()*60+now.getMinutes())/60*h)+"px";col.append(n)}
+  return col;
+}
+function alldayEls(w,start,i){return w.events.filter(x=>x.day===i&&!x.start).map(e=>{
+  const c=document.createElement("button");c.className="allday"+(e.done?" done":"");c.textContent=e.title;c.onclick=()=>openEditor(e,w,start);return c})}
+function rangeText(a){const b=addDays(a,6);return a.getMonth()===b.getMonth()?`${a.getDate()}–${b.getDate()} ${MON[b.getMonth()]}`:`${a.getDate()} ${MON[a.getMonth()]} – ${b.getDate()} ${MON[b.getMonth()]}`}
+
+function render(){
+  if(!uid)return;
+  const h=cssPx("--h"),frag=document.createDocumentFragment(),todayIso=iso(new Date());
+  if(mq.matches){
+    for(let wi=0;wi<rangeLen;wi++){
+      const start=addDays(rangeStart,wi*7),w=week(start);
+      for(let i=0;i<7;i++){
+        const d=addDays(start,i);
+        const sec=document.createElement("section");sec.className="day"+(iso(d)===todayIso?" today":"");
+        sec.id=`d-${w.k}-${i}`;sec.dataset.k=w.k;sec.dataset.d=i;
+        const lab=document.createElement("div");lab.className="lab";
+        const b=document.createElement("b");b.textContent=`${DAYS[i]}, ${d.getDate()} ${MON[d.getMonth()]}`;
+        lab.append(b,...alldayEls(w,start,i));
+        sec.append(lab,timesEl(h),colEl(w,start,i,h));
+        frag.append(sec);
+      }
+    }
+  }else{
+    const w=week(weekStart);
+    const head=document.createElement("div");head.className="wk-head";head.append(document.createElement("div"));
+    const body=document.createElement("div");body.className="wk-body";body.append(timesEl(h));
+    for(let i=0;i<7;i++){
+      const d=addDays(weekStart,i);
+      const hc=document.createElement("div");hc.className="hc"+(iso(d)===todayIso?" today":"");
+      const hd=document.createElement("div");hd.className="hd";hd.innerHTML=`<b>${d.getDate()}</b>${DAYS[i]}`;
+      hc.append(hd,...alldayEls(w,weekStart,i));head.append(hc);
+      body.append(colEl(w,weekStart,i,h));
+    }
+    frag.append(head,body);
+  }
+  $("view").replaceChildren(frag);
+  document.documentElement.style.setProperty("--topH",$("top").offsetHeight+"px");
+  updateTop();
+}
+function updateTop(){
+  if(!mq.matches){$("range").textContent=rangeText(weekStart);return}
+  const probe=$("top").getBoundingClientRect().bottom+1;
+  for(const s of $("view").children){const r=s.getBoundingClientRect();if(r.top<=probe&&r.bottom>probe){visible={k:s.dataset.k,d:+s.dataset.d};break}}
+  const ws=new Date(visible.k+"T00:00:00");
+  $("range").textContent=rangeText(ws);
+  const tabs=$("tabs"),todayIso=iso(new Date());
+  if(tabs.dataset.k!==visible.k){
+    tabs.dataset.k=visible.k;tabs.textContent="";
+    for(let i=0;i<7;i++){const d=addDays(ws,i),t=document.createElement("button");
+      t.className="tab"+(iso(d)===todayIso?" today":"");t.innerHTML=`<span>${DAYS[i]}</span><b>${d.getDate()}</b>`;
+      t.onclick=()=>scrollToDay(visible.k,i,null);tabs.append(t)}
+  }
+  [...tabs.children].forEach((t,i)=>t.classList.toggle("sel",i===visible.d));
+}
+function topOffset(){return $("top").offsetHeight}
+function scrollToDay(k,d,min){
+  const el=$(`d-${k}-${d}`);if(!el)return;
+  const y=el.getBoundingClientRect().top+scrollY-topOffset()+(min==null?0:cssPx("--lab")+min/60*cssPx("--h"));
+  scrollTo(0,Math.max(0,y));updateTop();
+}
+function scrollToNow(){
+  const now=new Date(),m=now.getHours()*60+now.getMinutes();
+  if(mq.matches){scrollToDay(iso(monday(now)),(now.getDay()+6)%7,Math.max(0,m-90))}
+  else{const target=iso(weekStart)===iso(monday(now))?Math.max(0,m-120):7*60;
+    const body=document.querySelector(".wk-body");if(!body)return;
+    const head=document.querySelector(".wk-head").offsetHeight;
+    scrollTo(0,body.getBoundingClientRect().top+scrollY-topOffset()-head+target/60*cssPx("--h"))}
+}
+function grow(){
+  if(!uid||!mq.matches||rangeLen>=40)return;
+  const H=innerHeight,de=document.documentElement;
+  if(scrollY+H>de.scrollHeight-2*H){rangeLen++;render()}
+  else if(scrollY<2*H){const before=de.scrollHeight;rangeStart=addDays(rangeStart,-7);rangeLen++;render();scrollBy(0,de.scrollHeight-before)}
+}
+let sraf=0;addEventListener("scroll",()=>{if(!sraf)sraf=requestAnimationFrame(()=>{sraf=0;if(uid){updateTop();grow()}})},{passive:true});
+
+/* ---------- editor ---------- */
+function openEditor(e,w,start,day,s0,e0){
+  const isNew=!e;
+  const cur=e?{...e}:{id:Math.random().toString(36).slice(2,10),title:"",day:day??0,start:s0||"",end:e0||"",done:false};
+  const m=$("modal");
+  m.innerHTML=`<div class="back" id="bk"><form class="sheet" id="f">
+    <input id="f-title" required maxlength="120" placeholder="Что делаем" autocomplete="off" aria-label="Название">
+    <div class="row">
+      <select id="f-day" aria-label="День">${DAYS.map((d,i)=>`<option value="${i}">${d}, ${addDays(start,i).getDate()}</option>`).join("")}</select>
+      <input id="f-start" type="time" step="300" aria-label="Начало">
+      <input id="f-end" type="time" step="300" aria-label="Конец">
+    </div>
+    <div class="hint">Без времени дело встанет в строку с датой.</div>
+    <div class="acts">
+      <button type="button" class="link" id="f-cancel">Отмена</button>
+      ${isNew?"":`<button type="button" class="link" id="f-del">Удалить</button>`}
+      <button type="submit" class="save">${isNew?"Добавить":"Сохранить"}</button>
+    </div>
+  </form></div>`;
+  $("f-title").value=cur.title;$("f-day").value=cur.day;$("f-start").value=cur.start;$("f-end").value=cur.end;
+  const close=()=>{m.innerHTML=""};
+  $("f-cancel").onclick=close;
+  $("bk").onclick=ev=>{if(ev.target.id==="bk")close()};
+  if(!isNew){let armed=false;$("f-del").onclick=()=>{
+    if(!armed){armed=true;$("f-del").textContent="Точно?";return}
+    w.events=w.events.filter(x=>x.id!==cur.id);save(w);render();close()}}
+  $("f").onsubmit=ev=>{ev.preventDefault();
+    cur.title=$("f-title").value.trim();if(!cur.title)return;
+    cur.day=+$("f-day").value;cur.start=$("f-start").value;cur.end=cur.start?$("f-end").value:"";
+    if(isNew)w.events.push(cur);else w.events=w.events.map(x=>x.id===cur.id?cur:x);
+    save(w);render();close()};
+  setTimeout(()=>$("f-title").focus(),30);
+}
+document.addEventListener("keydown",k=>{if(k.key==="Escape")$("modal").innerHTML=""});
+
+/* ---------- navigation ---------- */
+function go(delta){
+  if(mq.matches){
+    if(delta===0)return scrollToNow();
+    const target=addDays(new Date(visible.k+"T00:00:00"),7*delta),de=document.documentElement;
+    while(target<rangeStart){const before=de.scrollHeight;rangeStart=addDays(rangeStart,-7);rangeLen++;render();scrollBy(0,de.scrollHeight-before)}
+    while(addDays(rangeStart,rangeLen*7)<=target){rangeLen++;render()}
+    scrollToDay(iso(target),0,null);
+  }else{
+    weekStart=delta===0?monday(new Date()):addDays(weekStart,7*delta);
+    render();scrollToNow();
+  }
+}
+$("prev").onclick=()=>go(-1);$("next").onclick=()=>go(1);$("now").onclick=()=>go(0);
+mq.addEventListener("change",()=>{render();scrollToNow()});
+setInterval(()=>uid&&render(),60000);
+
+/* ---------- auth ---------- */
+$("lf").onsubmit=async ev=>{ev.preventDefault();$("l-err").textContent="";
+  try{await signInWithEmailAndPassword(auth,$("l-email").value.trim(),$("l-pass").value)}
+  catch(e){$("l-err").textContent=navigator.onLine?"Неверная почта или пароль":"Для первого входа нужен интернет"}};
+$("logout").onclick=()=>signOut(auth);
+onAuthStateChanged(auth,user=>{
+  $("boot").hidden=true;
+  weeks.forEach(w=>w.unsub?.());weeks.clear();
+  uid=user?user.uid:null;
+  $("login").hidden=!!user;$("app").hidden=!user;
+  if(user){render();syncState();requestAnimationFrame(()=>requestAnimationFrame(scrollToNow))}
+});
+
+/* ---------- offline copy + auto-update ---------- */
+if("serviceWorker" in navigator){
+  let reloaded=false;const had=!!navigator.serviceWorker.controller;
+  navigator.serviceWorker.addEventListener("controllerchange",()=>{if(had&&!reloaded){reloaded=true;location.reload()}});
+  navigator.serviceWorker.register("sw.js").then(r=>{r.update();document.addEventListener("visibilitychange",()=>{if(!document.hidden)r.update()})});
+}
+</script>
+</body>
+</html>
