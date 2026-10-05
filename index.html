@@ -145,6 +145,27 @@ input::-webkit-calendar-picker-indicator{filter:invert(1);opacity:.5}
 .picker::before{border-color:rgba(255,255,255,.45);box-shadow:0 0 12px rgba(255,255,255,.18)}
 .fld input.act{border-color:var(--neon);box-shadow:0 0 10px rgba(255,255,255,.3)}
 .sw input:checked{background:var(--neon);box-shadow:var(--glow)}
+
+/* colors, templates, duration */
+.ev{--c:#f2f2f2;background:color-mix(in srgb,var(--c) 13%,#0b0b0b);border-color:color-mix(in srgb,var(--c) 55%,transparent);box-shadow:0 0 8px color-mix(in srgb,var(--c) 22%,transparent)}
+.ev:hover{border-color:var(--c);box-shadow:0 0 10px color-mix(in srgb,var(--c) 55%,transparent)}
+.ev .ck{box-shadow:inset 0 0 0 1px var(--c)}
+.ev.done .ck{background:var(--c);box-shadow:0 0 6px var(--c)}
+.allday{--c:#f2f2f2;border-left-color:var(--c);background:color-mix(in srgb,var(--c) 13%,#0b0b0b)}
+#f-title{border-left:3px solid var(--c,#f2f2f2)}
+.colors{display:flex;gap:10px;flex-wrap:wrap}
+.cl{width:26px;height:26px;border-radius:50%;background:var(--c);box-shadow:0 0 6px color-mix(in srgb,var(--c) 50%,transparent)}
+.cl.on{outline:2px solid var(--c);outline-offset:3px;box-shadow:0 0 12px var(--c)}
+.tpls{display:flex;gap:8px;overflow-x:auto;scrollbar-width:none;margin-bottom:2px}
+.tpls::-webkit-scrollbar{display:none}
+.tp{flex:none;display:inline-flex;align-items:center;gap:8px;padding:7px 10px 7px 12px;border-radius:999px;border:1px solid color-mix(in srgb,var(--c) 60%,transparent);background:color-mix(in srgb,var(--c) 12%,#0b0b0b);font-size:.85rem;white-space:nowrap}
+.tp .x{color:var(--muted);font-size:.9rem;padding:0 2px}
+.tp .x.armed{color:var(--now);font-size:.75rem}
+.ends{font-size:.75rem;color:var(--muted);margin-top:6px}
+.presets{display:flex;gap:6px;flex-wrap:wrap}
+.ps{padding:6px 10px;border-radius:8px;border:1px solid var(--line-h);font-size:.8rem;color:var(--muted)}
+.ps.on{color:var(--bg);background:var(--neon);border-color:var(--neon);box-shadow:var(--glow)}
+.wheel:not(.h):not(.m){flex:1 1 0}
 @media (max-width:700px){
   .tabs{display:grid}
   :root{--h:56px;--tc:40px}
@@ -264,7 +285,7 @@ function colEl(w,start,i,h){
   col.onclick=ev=>{if(ev.target!==col)return;const m=Math.min(1410,Math.floor(ev.offsetY/(h/2))*30);openEditor(null,w,start,i,fmt(m),fmt(Math.min(1439,m+60)))};
   for(const it of lanes(w.events.filter(x=>x.day===i&&x.start))){
     const e=it.e,dur=it.en-it.s;
-    const el=document.createElement("div");el.className="ev"+(e.done?" done":"")+(dur<45?" short":"");
+    const el=document.createElement("div");el.className="ev"+(e.done?" done":"")+(dur<45?" short":"");el.style.setProperty("--c",colorOf(e.color));
     el.style.top=(it.s/60*h)+"px";el.style.height=Math.max(dur/60*h-2,18)+"px";
     el.style.left=`calc(${it.l*100/it.n}% + 2px)`;el.style.width=`calc(${100/it.n}% - 4px)`;
     const t=document.createElement("span");t.className="t";t.textContent=e.start+(e.end?"–"+e.end:"");
@@ -278,7 +299,7 @@ function colEl(w,start,i,h){
   return col;
 }
 function alldayEls(w,start,i){return w.events.filter(x=>x.day===i&&!x.start).map(e=>{
-  const c=document.createElement("button");c.className="allday"+(e.done?" done":"");c.textContent=e.title;c.onclick=()=>openEditor(e,w,start);return c})}
+  const c=document.createElement("button");c.className="allday"+(e.done?" done":"");c.style.setProperty("--c",colorOf(e.color));c.textContent=e.title;c.onclick=()=>openEditor(e,w,start);return c})}
 function rangeText(a){const b=addDays(a,6);return a.getMonth()===b.getMonth()?`${a.getDate()}–${b.getDate()} ${MON[b.getMonth()]}`:`${a.getDate()} ${MON[a.getMonth()]} – ${b.getDate()} ${MON[b.getMonth()]}`}
 
 function render(){
@@ -353,10 +374,14 @@ function grow(){
 let sraf=0;addEventListener("scroll",()=>{if(!sraf)sraf=requestAnimationFrame(()=>{sraf=0;if(uid){updateTop();grow()}})},{passive:true});
 
 /* ---------- editor ---------- */
+const COLORS={white:"#f2f2f2",red:"#ff4d5e",orange:"#ff9a3d",yellow:"#ffd84d",green:"#3ddc84",cyan:"#3ad1ff",blue:"#5b8cff",violet:"#b06bff",pink:"#ff6bd6"};
+const colorOf=k=>COLORS[k]||COLORS.white;
 const WD=["Вс","Пн","Вт","Ср","Чт","Пт","Сб"];
 const dateLabel=d=>`${WD[d.getDay()]}, ${d.getDate()} ${MON[d.getMonth()]}${d.getFullYear()!==new Date().getFullYear()?" "+d.getFullYear():""}`;
 const dateText=d=>`${pad(d.getDate())}.${pad(d.getMonth()+1)}.${d.getFullYear()}`;
 const dayOnly=d=>new Date(d.getFullYear(),d.getMonth(),d.getDate());
+const durLabel=m=>m<60?`${m} мин`:(m%60?`${Math.floor(m/60)} ч ${m%60} мин`:`${m/60} ч`);
+const PRESETS=[15,30,45,60,90,120,180];
 function parseDate(s,fallback){
   const m=s.trim().match(/^(\d{1,2})[.\/\-\s](\d{1,2})(?:[.\/\-\s](\d{2,4}))?$/);if(!m)return null;
   let y=m[3]?+m[3]:fallback.getFullYear();if(y<100)y+=2000;
@@ -366,6 +391,16 @@ function parseTime(s){
   const t=s.trim().replace(/\s/g,"");let m=t.match(/^(\d{1,2})[:.,-](\d{1,2})$/)||t.match(/^(\d{1,2})(\d{2})$/)||t.match(/^(\d{1,2})$/);
   if(!m)return null;const h=+m[1],mi=m[2]==null?0:+m[2];return h<24&&mi<60?fmt(h*60+mi):null;
 }
+/* "90", "1:30", "1.5", "1ч 30м", "2 ч" → minutes */
+function parseDur(s){
+  const t=s.trim().toLowerCase().replace(",",".");let m;
+  if((m=t.match(/^(\d{1,2}):(\d{1,2})$/)))return +m[1]*60+ +m[2];
+  const h=t.match(/(\d+(?:\.\d+)?)\s*ч/),mi=t.match(/(\d+)\s*м/);
+  if(h||mi)return Math.round((h?parseFloat(h[1])*60:0)+(mi?+mi[1]:0));
+  if((m=t.match(/^\d+\.\d+$/)))return Math.round(parseFloat(t)*60);
+  if((m=t.match(/^\d+$/)))return +t<=12?+t*60:+t;
+  return null;
+}
 function defaultDate(){
   const today=dayOnly(new Date());
   if(mq.matches)return addDays(new Date(visible.k+"T00:00:00"),visible.d);
@@ -373,9 +408,18 @@ function defaultDate(){
 }
 function nextSlot(){const n=new Date(),m=Math.min(1380,Math.ceil((n.getHours()*60+n.getMinutes()+1)/30)*30);return fmt(m)}
 
+/* ---------- templates: users/{uid}/meta/templates ---------- */
+let templates=[],tplUnsub=null,tplRef=null;
+function watchTemplates(){
+  tplRef=doc(fs,"users",uid,"meta","templates");
+  tplUnsub=onSnapshot(tplRef,s=>{const d=s.exists()?s.data():null;templates=d&&Array.isArray(d.items)?d.items:[];
+    if(window.__paintTpl)window.__paintTpl()});
+}
+function saveTemplates(){setDoc(tplRef,{items:templates}).catch(()=>setDot("off","Шаблон не сохранился"))}
+
 /* one scroll-snap wheel; onPick(index) fires when it settles */
-function makeWheel(items,idx,onPick,wide){
-  const el=document.createElement("div");el.className="wheel"+(wide?" wide":"");
+function makeWheel(items,idx,onPick,cls){
+  const el=document.createElement("div");el.className="wheel"+(cls?" "+cls:"");
   items.forEach((t,i)=>{const it=document.createElement("div");it.textContent=t;it.onclick=()=>{el.scrollTop=i*36};el.append(it)});
   let tm=0;el.skip=false;
   el.addEventListener("scroll",()=>{clearTimeout(tm);tm=setTimeout(()=>{
@@ -390,42 +434,59 @@ function openEditor(e,w,wStart,day,s0,e0){
   const isNew=!e;
   const st={
     title:e?e.title:"",
+    color:e&&e.color?e.color:"white",
     date:dayOnly(wStart?addDays(wStart,e?e.day:day):defaultDate()),
     allDay:e?!e.start:false,
     start:(e&&e.start)||s0||nextSlot(),
-    end:(e&&e.end)||e0||""
+    dur:60,
+    keep:false
   };
-  if(!st.end){const s=toMin(st.start);st.end=fmt(Math.min(1439,s+60))}
+  const endSrc=(e&&e.end)||e0;
+  if(endSrc){const d=toMin(endSrc)-toMin(st.start);if(d>0)st.dur=d}
   let active="start";
   const m=$("modal");
   m.innerHTML=`<div class="back" id="bk"><form class="sheet" id="f" autocomplete="off">
+    ${isNew?`<div class="tpls" id="f-tpls"></div>`:""}
     <input id="f-title" maxlength="120" placeholder="Что делаем" aria-label="Название">
+    <div class="colors" id="f-colors">${Object.entries(COLORS).map(([k,c])=>`<button type="button" class="cl" data-k="${k}" style="--c:${c}" aria-label="Цвет"></button>`).join("")}</div>
     <label class="fld"><span>Дата</span><input id="f-date" readonly inputmode="numeric" aria-label="Дата"></label>
     <label class="sw">Без времени<input type="checkbox" id="f-all"></label>
-    <div class="row" id="f-times">
-      <label class="fld"><span>Начало</span><input id="f-start" readonly inputmode="numeric" aria-label="Начало"></label>
-      <label class="fld"><span>Конец</span><input id="f-end" readonly inputmode="numeric" aria-label="Конец"></label>
+    <div id="f-timed">
+      <div class="row">
+        <label class="fld"><span>Начало</span><input id="f-start" readonly inputmode="numeric" aria-label="Начало"></label>
+        <label class="fld"><span>Длительность</span><input id="f-dur" readonly inputmode="numeric" aria-label="Длительность"></label>
+      </div>
+      <div class="ends" id="f-ends"></div>
     </div>
+    <div class="presets" id="f-presets">${PRESETS.map(p=>`<button type="button" class="ps" data-m="${p}">${durLabel(p).replace(" мин","м").replace(" ч","ч").replace(" ","")}</button>`).join("")}</div>
     <div class="picker" id="f-pick"></div>
     <div class="hint">Нажмите на поле ещё раз, чтобы ввести вручную.</div>
+    <label class="sw">Сохранить как шаблон<input type="checkbox" id="f-keep"></label>
     <div class="acts">
       <button type="button" class="link" id="f-cancel">Отмена</button>
       ${isNew?"":`<button type="button" class="link" id="f-del">Удалить</button>`}
       <button type="submit" class="save">${isNew?"Добавить":"Сохранить"}</button>
     </div>
   </form></div>`;
-  const F={date:$("f-date"),start:$("f-start"),end:$("f-end")};
+  const F={date:$("f-date"),start:$("f-start"),dur:$("f-dur")};
   $("f-title").value=st.title;$("f-all").checked=st.allDay;
+  if(!isNew)st.keep=templates.some(t=>t.title.toLowerCase()===st.title.toLowerCase());
+  $("f-keep").checked=st.keep;
 
   function show(){
-    F.date.value=F.date.readOnly?dateLabel(st.date):F.date.value;
+    if(F.date.readOnly)F.date.value=dateLabel(st.date);
     if(F.start.readOnly)F.start.value=st.start;
-    if(F.end.readOnly)F.end.value=st.end;
-    $("f-times").hidden=st.allDay;
+    if(F.dur.readOnly)F.dur.value=durLabel(st.dur);
+    const end=Math.min(1440,toMin(st.start)+st.dur);
+    $("f-ends").textContent=end>=1440?"до конца дня":`до ${fmt(end)}`;
+    $("f-timed").hidden=st.allDay;
     if(st.allDay&&active!=="date")active="date";
+    $("f-presets").hidden=active!=="dur";
+    $("f-presets").querySelectorAll(".ps").forEach(b=>b.classList.toggle("on",+b.dataset.m===st.dur));
     Object.entries(F).forEach(([k,el])=>el.classList.toggle("act",k===active));
+    m.querySelectorAll(".cl").forEach(b=>b.classList.toggle("on",b.dataset.k===st.color));
+    $("f-title").style.setProperty("--c",colorOf(st.color));
   }
-  function setStart(v){const d=toMin(st.end)-toMin(st.start);st.start=v;st.end=fmt(Math.min(1439,toMin(v)+(d>0?d:60)))}
   function buildPicker(){
     const p=$("f-pick");p.textContent="";
     if(active==="date"){
@@ -434,23 +495,29 @@ function openEditor(e,w,wStart,day,s0,e0){
       const days=[];for(let i=0;i<n;i++)days.push(addDays(base,i));
       let idx=Math.round((dayOnly(st.date)-base)/864e5);
       if(idx<0){days.unshift(...Array.from({length:-idx},(_,i)=>addDays(st.date,i)));idx=0}
-      p.append(makeWheel(days.map(dateLabel),idx,i=>{st.date=days[i];show()},true));
-    }else{
-      const key=active,cur=toMin(st[key]);
+      p.append(makeWheel(days.map(dateLabel),idx,i=>{st.date=days[i];show()}));
+    }else if(active==="start"){
+      const cur=toMin(st.start);let hh=Math.floor(cur/60),mm=cur%60;
       const mins=Array.from({length:12},(_,i)=>i*5);
-      let hh=Math.floor(cur/60),mm=cur%60;
-      const hW=makeWheel(Array.from({length:24},(_,i)=>pad(i)),hh,i=>{hh=i;apply()});hW.classList.add("h");
-      const mW=makeWheel(mins.map(pad),Math.round(mm/5)%12,i=>{mm=mins[i];apply()});mW.classList.add("m");
-      function apply(){const v=fmt(hh*60+mm);if(key==="start")setStart(v);else st.end=v;show()}
+      const apply=()=>{st.start=fmt(hh*60+mm);show()};
       const c=document.createElement("span");c.className="colon";c.textContent=":";
-      p.append(hW,c,mW);
+      p.append(makeWheel(Array.from({length:24},(_,i)=>pad(i)),hh,i=>{hh=i;apply()},"h"),c,
+               makeWheel(mins.map(pad),Math.round(mm/5)%12,i=>{mm=mins[i];apply()},"m"));
+    }else{
+      let hh=Math.min(12,Math.floor(st.dur/60)),mm=st.dur%60;
+      const mins=Array.from({length:12},(_,i)=>i*5);
+      const apply=()=>{st.dur=Math.max(5,hh*60+mm);show()};
+      const lh=document.createElement("span");lh.className="colon";lh.textContent="ч";
+      const lm=document.createElement("span");lm.className="colon";lm.textContent="мин";
+      p.append(makeWheel(Array.from({length:13},(_,i)=>String(i)),hh,i=>{hh=i;apply()},"h"),lh,
+               makeWheel(mins.map(pad),Math.round(mm/5)%12,i=>{mm=mins[i];apply()},"m"),lm);
     }
   }
   /* first tap on a field = its wheel, second tap = keyboard */
   Object.entries(F).forEach(([k,el])=>{
     el.addEventListener("click",ev=>{
       if(active!==k){ev.preventDefault();active=k;show();buildPicker();return}
-      if(el.readOnly){el.readOnly=false;el.value=k==="date"?dateText(st.date):st[k];el.focus();el.select()}
+      if(el.readOnly){el.readOnly=false;el.value=k==="date"?dateText(st.date):k==="dur"?String(st.dur):st[k];el.focus();el.select()}
     });
     el.addEventListener("blur",()=>commit(k));
     el.addEventListener("keydown",ev=>{if(ev.key==="Enter"){ev.preventDefault();el.blur()}});
@@ -458,12 +525,39 @@ function openEditor(e,w,wStart,day,s0,e0){
   function commit(k){
     const el=F[k];if(el.readOnly)return;
     if(k==="date"){const d=parseDate(el.value,st.date);if(d)st.date=d}
-    else{const v=parseTime(el.value);if(v){if(k==="start")setStart(v);else st.end=v}}
+    else if(k==="start"){const v=parseTime(el.value);if(v)st.start=v}
+    else{const d=parseDur(el.value);if(d&&d>0)st.dur=Math.min(1440,d)}
     el.readOnly=true;show();buildPicker();
   }
+  $("f-presets").onclick=ev=>{const b=ev.target.closest(".ps");if(!b)return;st.dur=+b.dataset.m;show();buildPicker()};
+  $("f-colors").onclick=ev=>{const b=ev.target.closest(".cl");if(!b)return;st.color=b.dataset.k;show()};
   $("f-all").onchange=ev=>{st.allDay=ev.target.checked;active=st.allDay?"date":"start";show();buildPicker()};
+  $("f-keep").onchange=ev=>{st.keep=ev.target.checked};
 
-  const close=()=>{m.innerHTML=""};
+  /* template chips: tap = fill, × twice = delete */
+  function paintTpl(){
+    const box=$("f-tpls");if(!box)return;box.textContent="";
+    box.hidden=!templates.length;
+    for(const t of templates){
+      const b=document.createElement("button");b.type="button";b.className="tp";b.style.setProperty("--c",colorOf(t.color));
+      const n=document.createElement("span");n.textContent=t.title;
+      const x=document.createElement("span");x.className="x";x.textContent="×";x.setAttribute("aria-label","Удалить шаблон");
+      b.append(n,x);
+      b.onclick=ev=>{
+        if(ev.target===x){
+          if(!x.classList.contains("armed")){x.classList.add("armed");x.textContent="удалить?";return}
+          templates=templates.filter(y=>y.id!==t.id);saveTemplates();paintTpl();return;
+        }
+        st.title=t.title;st.color=t.color||"white";st.dur=t.dur||60;st.allDay=!!t.allDay;st.keep=true;
+        $("f-title").value=st.title;$("f-all").checked=st.allDay;$("f-keep").checked=true;
+        active=st.allDay?"date":"start";show();buildPicker();
+      };
+      box.append(b);
+    }
+  }
+  window.__paintTpl=paintTpl;paintTpl();
+
+  const close=()=>{m.innerHTML="";window.__paintTpl=null};
   $("f-cancel").onclick=close;
   $("bk").onclick=ev=>{if(ev.target.id==="bk")close()};
   if(!isNew){let armed=false;$("f-del").onclick=()=>{
@@ -472,20 +566,27 @@ function openEditor(e,w,wStart,day,s0,e0){
   $("f").onsubmit=ev=>{ev.preventDefault();
     Object.keys(F).forEach(commit);
     const title=$("f-title").value.trim();if(!title){$("f-title").focus();return}
+    const end=Math.min(1439,toMin(st.start)+st.dur);
     const tw=week(monday(st.date));
-    const item={id:e?e.id:Math.random().toString(36).slice(2,10),title,day:(st.date.getDay()+6)%7,
-      start:st.allDay?"":st.start,end:st.allDay?"":st.end,done:e?!!e.done:false};
+    const item={id:e?e.id:Math.random().toString(36).slice(2,10),title,color:st.color,day:(st.date.getDay()+6)%7,
+      start:st.allDay?"":st.start,end:st.allDay?"":fmt(end),done:e?!!e.done:false};
     if(e&&w.k!==tw.k){w.events=w.events.filter(x=>x.id!==e.id);save(w)}
     if(e&&w.k===tw.k){w.events=w.events.map(x=>x.id===e.id?item:x);save(w)}
     else if(tw.loaded){tw.events.push(item);save(tw)}
     else{setDoc(tw.ref,{events:arrayUnion(item),updatedAt:new Date().toISOString()},{merge:true}).catch(()=>setDot("off","Не сохранилось"))}
+    /* template: everything except date and time */
+    const same=t=>t.title.toLowerCase()===title.toLowerCase();
+    if(st.keep){
+      const t={id:(templates.find(same)||{}).id||Math.random().toString(36).slice(2,10),title,color:st.color,dur:st.dur,allDay:st.allDay};
+      templates=templates.some(same)?templates.map(x=>same(x)?t:x):[...templates,t];saveTemplates();
+    }else if(!isNew&&templates.some(same)){templates=templates.filter(x=>!same(x));saveTemplates()}
     render();close();
     if(mq.matches)requestAnimationFrame(()=>scrollToDay(tw.k,item.day,item.start?Math.max(0,toMin(item.start)-60):null));
   };
   show();buildPicker();
-  if(isNew)setTimeout(()=>$("f-title").focus(),30);
+  if(isNew&&!templates.length)setTimeout(()=>$("f-title").focus(),30);
 }
-document.addEventListener("keydown",k=>{if(k.key==="Escape")$("modal").innerHTML=""});
+document.addEventListener("keydown",k=>{if(k.key==="Escape"){$("modal").innerHTML="";window.__paintTpl=null}});
 $("fab").onclick=()=>openEditor(null);
 
 /* ---------- navigation ---------- */
@@ -515,11 +616,12 @@ onAuthStateChanged(auth,user=>{
   weeks.forEach(w=>w.unsub?.());weeks.clear();
   uid=user?user.uid:null;
   $("login").hidden=!!user;$("app").hidden=!user;$("fab").hidden=!user;
-  if(user){render();syncState();requestAnimationFrame(()=>requestAnimationFrame(scrollToNow))}
+  tplUnsub?.();tplUnsub=null;templates=[];
+  if(user){watchTemplates();render();syncState();requestAnimationFrame(()=>requestAnimationFrame(scrollToNow))}
 });
 
 /* ---------- offline copy + auto-update ---------- */
-const BUILD="20261005200208";
+const BUILD="20261005201754";
 async function checkVersion(){
   if(!navigator.onLine)return;
   try{const r=await fetch("version.txt?t="+Date.now(),{cache:"no-store"});if(!r.ok)return;
