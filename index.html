@@ -191,6 +191,11 @@ input,select,button{font-weight:inherit}
 .qprev{display:flex;align-items:center;gap:8px;width:100%;text-align:left;font-size:.8rem;color:var(--fg);padding:0 2px 8px}
 .qprev i{width:10px;height:10px;border-radius:50%;flex:none}
 .qprev span{margin-left:auto;color:var(--muted);text-decoration:underline;text-underline-offset:3px}
+
+.quick .mic{background:var(--field);color:var(--fg);border:1px solid var(--line-h);padding:0 11px}
+.quick .mic.on{background:var(--now);border-color:var(--now);color:#fff;box-shadow:0 0 12px var(--now);animation:micp 1.2s ease-in-out infinite}
+@keyframes micp{50%{box-shadow:0 0 2px var(--now)}}
+@media (prefers-reduced-motion:reduce){.quick .mic.on{animation:none}}
 body.daymode .tabs{display:grid}
 .seg{display:flex;background:var(--field);border:1px solid var(--line-h);border-radius:9px;padding:2px;margin-left:auto}
 .seg button{padding:5px 9px;border-radius:7px;font-size:.78rem;color:var(--muted)}
@@ -232,6 +237,7 @@ body.daymode .tabs{display:grid}
     </div>
     <form class="quick" id="qf" autocomplete="off">
       <input id="q" placeholder="Добавление текстом" enterkeyhint="done" aria-label="Быстро добавить дело">
+      <button type="button" class="mic" id="q-mic" aria-label="Голосовой ввод"><svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><rect x="9" y="3" width="6" height="12" rx="3" fill="currentColor"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/></svg></button>
       <button type="submit" id="q-go" hidden>Добавить</button>
     </form>
     <button type="button" class="qprev" id="q-prev" hidden></button>
@@ -789,6 +795,29 @@ $("q-prev").onclick=()=>{
   openEditor(null,null,ws,day,s0,e0,{title:p.title,color:p.color,allDay:p.allDay});
 };
 
+/* voice input: Safari / Chrome speech recognition → the quick-add line */
+(()=>{
+  const SR=window.SpeechRecognition||window.webkitSpeechRecognition,btn=$("q-mic");
+  let rec=null;
+  const note=t=>{const el=$("q-prev");el.hidden=false;el.textContent=t;document.documentElement.style.setProperty("--topH",$("top").offsetHeight+"px")};
+  btn.onclick=()=>{
+    if(rec){rec.stop();return}
+    if(!SR){$("q").focus();note("Здесь нет встроенного распознавания. Нажмите микрофон на клавиатуре и продиктуйте.");return}
+    try{rec=new SR()}catch(e){rec=null;$("q").focus();note("Нажмите микрофон на клавиатуре и продиктуйте.");return}
+    rec.lang="ru-RU";rec.interimResults=true;rec.continuous=false;rec.maxAlternatives=1;
+    const before=$("q").value.trim();
+    rec.onresult=ev=>{let t="";for(const r of ev.results)t+=r[0].transcript;$("q").value=(before?before+" ":"")+t.trim();quickPreview()};
+    rec.onerror=ev=>{
+      if(ev.error==="not-allowed"||ev.error==="service-not-allowed")note("Нет доступа к микрофону. Разрешите его в настройках или продиктуйте через клавиатуру.");
+      else if(ev.error==="no-speech")note("Ничего не услышал, попробуйте ещё раз.");
+      else if(ev.error!=="aborted")note(navigator.onLine?"Не получилось распознать, попробуйте ещё раз.":"Для голосового ввода нужен интернет.");
+    };
+    rec.onend=()=>{rec=null;btn.classList.remove("on");if($("q").value.trim())quickPreview()};
+    btn.classList.add("on");
+    try{rec.start()}catch(e){rec=null;btn.classList.remove("on")}
+  };
+})();
+
 /* ---------- navigation ---------- */
 function go(delta){
   if(isDay()){
@@ -847,7 +876,7 @@ onAuthStateChanged(auth,user=>{
 });
 
 /* ---------- offline copy + auto-update ---------- */
-const BUILD="20261005211253";
+const BUILD="20261005212559";
 async function checkVersion(){
   if(!navigator.onLine)return;
   try{const r=await fetch("version.txt?t="+Date.now(),{cache:"no-store"});if(!r.ok)return;
