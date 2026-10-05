@@ -91,7 +91,8 @@ input::-webkit-calendar-picker-indicator{filter:invert(1);opacity:.5}
 .hint{font-size:.72rem;color:var(--muted);margin-top:-4px}
 
 /* "+" button */
-.fab{position:fixed;right:max(20px,env(safe-area-inset-right));bottom:calc(20px + env(safe-area-inset-bottom));width:56px;height:56px;border-radius:50%;background:var(--fg);color:var(--bg);font-size:28px;font-weight:300;line-height:1;z-index:8;box-shadow:0 6px 20px rgba(0,0,0,.6);display:grid;place-items:center}
+.fab{position:fixed;right:max(20px,env(safe-area-inset-right));bottom:calc(20px + env(safe-area-inset-bottom));width:56px;height:56px;border-radius:50%;background:var(--fg);color:var(--bg);padding:0;z-index:8;box-shadow:0 6px 20px rgba(0,0,0,.6);display:grid;place-items:center}
+.fab svg{display:block}
 .fab:active{transform:scale(.95)}
 
 /* editor fields: tap = wheel, tap again = keyboard */
@@ -163,7 +164,7 @@ input::-webkit-calendar-picker-indicator{filter:invert(1);opacity:.5}
   <div id="view"></div>
   <div class="foot" style="padding-bottom:64px"><button id="logout">Выйти</button></div>
 </div>
-<button class="fab" id="fab" aria-label="Добавить дело" hidden>+</button>
+<button class="fab" id="fab" aria-label="Добавить дело" hidden><svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><path d="M12 4v16M4 12h16" stroke="currentColor" stroke-width="2" stroke-linecap="round" fill="none"/></svg></button>
 <div id="modal"></div>
 
 <script type="module">
