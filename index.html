@@ -177,8 +177,16 @@ body{font-weight:600}
 .range{font-size:1.08rem}
 .tab b{font-size:1.1rem}
 input,select,button{font-weight:inherit}
+body.daymode .tabs{display:grid}
+.seg{display:flex;background:var(--field);border:1px solid var(--line-h);border-radius:9px;padding:2px;margin-left:auto}
+.seg button{padding:5px 9px;border-radius:7px;font-size:.78rem;color:var(--muted)}
+.seg button.on{background:var(--neon,#fff);color:var(--bg);box-shadow:var(--glow)}
+.seg+.nav{margin-left:0}
 @media (max-width:700px){
-  .tabs{display:grid}
+  .range{font-size:.95rem}
+  .bar{gap:8px}
+  .nav button{min-width:30px;padding:0 6px}
+  .seg button{padding:5px 7px;font-size:.75rem}
   :root{--h:56px;--tc:40px}
 }
 </style>
@@ -201,10 +209,11 @@ input,select,button{font-weight:inherit}
     <div class="bar">
       <span class="dot" id="dot" title="Подключаюсь"></span>
       <span class="range" id="range"></span>
+      <div class="seg" id="seg"><button data-m="day">День</button><button data-m="week">Неделя</button></div>
       <div class="nav">
-        <button id="prev" aria-label="Предыдущая неделя">←</button>
+        <button id="prev" aria-label="Назад">←</button>
         <button id="now">Сегодня</button>
-        <button id="next" aria-label="Следующая неделя">→</button>
+        <button id="next" aria-label="Вперёд">→</button>
       </div>
     </div>
     <div class="tabs" id="tabs"></div>
@@ -242,6 +251,8 @@ const fmt=m=>pad(Math.floor(m/60))+":"+pad(m%60);
 const addDays=(d,n)=>{const x=new Date(d);x.setDate(x.getDate()+n);return x};
 function monday(d){const x=new Date(d.getFullYear(),d.getMonth(),d.getDate());x.setDate(x.getDate()-(x.getDay()+6)%7);return x}
 const mq=matchMedia("(max-width:700px)");
+let mode=(()=>{try{return localStorage.getItem("viewMode")}catch(e){return null}})()||(mq.matches?"day":"week");
+const isDay=()=>mode==="day";
 const cssPx=v=>parseFloat(getComputedStyle(document.documentElement).getPropertyValue(v))||0;
 
 let uid=null;
@@ -315,7 +326,7 @@ function rangeText(a){const b=addDays(a,6);return a.getMonth()===b.getMonth()?`$
 function render(){
   if(!uid)return;
   const h=cssPx("--h"),frag=document.createDocumentFragment(),todayIso=iso(new Date());
-  if(mq.matches){
+  if(isDay()){
     for(let wi=0;wi<rangeLen;wi++){
       const start=addDays(rangeStart,wi*7),w=week(start);
       for(let i=0;i<7;i++){
@@ -347,7 +358,7 @@ function render(){
   updateTop();
 }
 function updateTop(){
-  if(!mq.matches){$("range").textContent=rangeText(weekStart);return}
+  if(!isDay()){$("range").textContent=rangeText(weekStart);return}
   const probe=$("top").getBoundingClientRect().bottom+1;
   for(const s of $("view").children){const r=s.getBoundingClientRect();if(r.top<=probe&&r.bottom>probe){visible={k:s.dataset.k,d:+s.dataset.d};break}}
   const ws=new Date(visible.k+"T00:00:00");
@@ -369,14 +380,15 @@ function scrollToDay(k,d,min){
 }
 function scrollToNow(){
   const now=new Date(),m=now.getHours()*60+now.getMinutes();
-  if(mq.matches){scrollToDay(iso(monday(now)),(now.getDay()+6)%7,Math.max(0,m-90))}
+  if(isDay()){if(!$(`d-${iso(monday(now))}-${(now.getDay()+6)%7}`)){rangeStart=addDays(monday(now),-7);rangeLen=3;render()}
+    scrollToDay(iso(monday(now)),(now.getDay()+6)%7,Math.max(0,m-90))}
   else{const target=iso(weekStart)===iso(monday(now))?Math.max(0,m-120):7*60;
     const body=document.querySelector(".wk-body");if(!body)return;
     const head=document.querySelector(".wk-head").offsetHeight;
     scrollTo(0,body.getBoundingClientRect().top+scrollY-topOffset()-head+target/60*cssPx("--h"))}
 }
 function grow(){
-  if(!uid||!mq.matches||rangeLen>=40)return;
+  if(!uid||!isDay()||rangeLen>=40)return;
   const H=innerHeight,de=document.documentElement;
   if(scrollY+H>de.scrollHeight-2*H){rangeLen++;render()}
   else if(scrollY<2*H){const before=de.scrollHeight;rangeStart=addDays(rangeStart,-7);rangeLen++;render();scrollBy(0,de.scrollHeight-before)}
@@ -413,7 +425,7 @@ function parseDur(s){
 }
 function defaultDate(){
   const today=dayOnly(new Date());
-  if(mq.matches)return addDays(new Date(visible.k+"T00:00:00"),visible.d);
+  if(isDay())return addDays(new Date(visible.k+"T00:00:00"),visible.d);
   return iso(monday(today))===iso(weekStart)?today:new Date(weekStart);
 }
 function nextSlot(){const n=new Date(),m=Math.min(1380,Math.ceil((n.getHours()*60+n.getMinutes()+1)/30)*30);return fmt(m)}
@@ -591,7 +603,7 @@ function openEditor(e,w,wStart,day,s0,e0){
       templates=templates.some(same)?templates.map(x=>same(x)?t:x):[...templates,t];saveTemplates();
     }else if(!isNew&&templates.some(same)){templates=templates.filter(x=>!same(x));saveTemplates()}
     render();close();
-    if(mq.matches)requestAnimationFrame(()=>scrollToDay(tw.k,item.day,item.start?Math.max(0,toMin(item.start)-60):null));
+    if(isDay())requestAnimationFrame(()=>scrollToDay(tw.k,item.day,item.start?Math.max(0,toMin(item.start)-60):null));
   };
   show();buildPicker();
   if(isNew&&!templates.length)setTimeout(()=>$("f-title").focus(),30);
@@ -601,19 +613,45 @@ $("fab").onclick=()=>openEditor(null);
 
 /* ---------- navigation ---------- */
 function go(delta){
-  if(mq.matches){
+  if(isDay()){
     if(delta===0)return scrollToNow();
-    const target=addDays(new Date(visible.k+"T00:00:00"),7*delta),de=document.documentElement;
+    /* step one day, keep the same time of day on screen */
+    const cur=$(`d-${visible.k}-${visible.d}`);
+    const off=cur?topOffset()-cur.getBoundingClientRect().top:0;
+    const target=addDays(new Date(visible.k+"T00:00:00"),visible.d+delta),de=document.documentElement;
     while(target<rangeStart){const before=de.scrollHeight;rangeStart=addDays(rangeStart,-7);rangeLen++;render();scrollBy(0,de.scrollHeight-before)}
     while(addDays(rangeStart,rangeLen*7)<=target){rangeLen++;render()}
-    scrollToDay(iso(target),0,null);
+    const el=$(`d-${iso(monday(target))}-${(target.getDay()+6)%7}`);if(!el)return;
+    scrollTo(0,Math.max(0,el.getBoundingClientRect().top+scrollY-topOffset()+off));updateTop();
   }else{
     weekStart=delta===0?monday(new Date()):addDays(weekStart,7*delta);
     render();scrollToNow();
   }
 }
+function setMode(m){
+  if(m!==mode){
+    if(m==="week"){weekStart=new Date(visible.k+"T00:00:00")}
+    else{
+      const t=monday(new Date()),thisWeek=iso(weekStart)===iso(t);
+      rangeStart=addDays(weekStart,-7);rangeLen=3;
+      visible={k:iso(weekStart),d:thisWeek?(new Date().getDay()+6)%7:0};
+    }
+    mode=m;try{localStorage.setItem("viewMode",m)}catch(e){}
+  }
+  document.body.classList.toggle("daymode",isDay());
+  $("seg").querySelectorAll("button").forEach(b=>b.classList.toggle("on",b.dataset.m===mode));
+  $("tabs").dataset.k="";
+  if(!uid)return;
+  render();
+  requestAnimationFrame(()=>{
+    const thisWeek=iso(isDay()?new Date(visible.k+"T00:00:00"):weekStart)===iso(monday(new Date()));
+    if(thisWeek)scrollToNow();else if(isDay())scrollToDay(visible.k,visible.d,7*60);else scrollToNow();
+  });
+}
+$("seg").onclick=ev=>{const b=ev.target.closest("button");if(b)setMode(b.dataset.m)};
 $("prev").onclick=()=>go(-1);$("next").onclick=()=>go(1);$("now").onclick=()=>go(0);
-mq.addEventListener("change",()=>{render();scrollToNow()});
+mq.addEventListener("change",()=>{if(uid){render();scrollToNow()}});
+setMode(mode);
 setInterval(()=>uid&&render(),60000);
 
 /* ---------- auth ---------- */
@@ -631,7 +669,7 @@ onAuthStateChanged(auth,user=>{
 });
 
 /* ---------- offline copy + auto-update ---------- */
-const BUILD="20261005203118";
+const BUILD="20261005203405";
 async function checkVersion(){
   if(!navigator.onLine)return;
   try{const r=await fetch("version.txt?t="+Date.now(),{cache:"no-store"});if(!r.ok)return;
