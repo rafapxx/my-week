@@ -1,0 +1,6 @@
+{
+  // Static site: serve the files in this folder as-is.
+  "name": "my-week",
+  "compatibility_date": "2025-09-01",
+  "assets": { "directory": "./" }
+}
