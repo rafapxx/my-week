@@ -46,7 +46,7 @@ button{font:inherit;color:inherit;cursor:pointer;background:none;border:0;paddin
 
 .times{position:relative}
 .times span{position:absolute;right:8px;transform:translateY(-50%);font-size:.68rem;color:var(--muted);font-variant-numeric:tabular-nums}
-.col{position:relative;height:calc(var(--h) * 24);border-left:1px solid var(--line);cursor:cell;
+.col{position:relative;height:calc(var(--h) * 24);border-left:1px solid var(--line);
   background-image:linear-gradient(var(--line-h) 1px,transparent 1px),linear-gradient(var(--line) 1px,transparent 1px);
   background-size:100% var(--h),100% calc(var(--h) / 2)}
 .col.today{background-color:#070707}
@@ -282,7 +282,6 @@ function timesEl(h){const t=document.createElement("div");t.className="times";t.
 function colEl(w,start,i,h){
   const isToday=iso(addDays(start,i))===iso(new Date());
   const col=document.createElement("div");col.className="col"+(isToday?" today":"");
-  col.onclick=ev=>{if(ev.target!==col)return;const m=Math.min(1410,Math.floor(ev.offsetY/(h/2))*30);openEditor(null,w,start,i,fmt(m),fmt(Math.min(1439,m+60)))};
   for(const it of lanes(w.events.filter(x=>x.day===i&&x.start))){
     const e=it.e,dur=it.en-it.s;
     const el=document.createElement("div");el.className="ev"+(e.done?" done":"")+(dur<45?" short":"");el.style.setProperty("--c",colorOf(e.color));
@@ -621,7 +620,7 @@ onAuthStateChanged(auth,user=>{
 });
 
 /* ---------- offline copy + auto-update ---------- */
-const BUILD="20261005201754";
+const BUILD="20261005202225";
 async function checkVersion(){
   if(!navigator.onLine)return;
   try{const r=await fetch("version.txt?t="+Date.now(),{cache:"no-store"});if(!r.ok)return;
