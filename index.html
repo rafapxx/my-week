@@ -197,6 +197,16 @@ input,select,button{font-weight:inherit}
 .quick .mic.on{background:var(--now);border-color:var(--now);color:#fff;box-shadow:0 0 12px var(--now);animation:micp 1.2s ease-in-out infinite}
 @keyframes micp{50%{box-shadow:0 0 2px var(--now)}}
 @media (prefers-reduced-motion:reduce){.quick .mic.on{animation:none}}
+
+/* event dots in the day strip */
+.dots{display:flex;align-items:center;justify-content:center;gap:3px;height:6px;min-width:6px}
+.dots i{width:5px;height:5px;border-radius:50%;flex:none}
+.dots i.d{opacity:.35}
+.dots em{font-style:normal;font-size:.6rem;line-height:1;color:var(--muted);font-weight:800}
+.tab .dots{margin-top:2px}
+.tab.sel .dots i{box-shadow:0 0 0 1px rgba(0,0,0,.25)}
+.tab.sel .dots em{color:var(--bg)}
+.hd .dots{margin-left:auto}
 body.daymode .tabs{display:grid}
 .seg{display:flex;background:var(--field);border:1px solid var(--line-h);border-radius:9px;padding:2px;margin-left:auto}
 .seg button{padding:5px 9px;border-radius:7px;font-size:.78rem;color:var(--muted)}
@@ -363,6 +373,14 @@ function colEl(w,start,i,h){
 }
 function alldayEls(w,start,i){return w.events.filter(x=>x.day===i&&!x.start).map(e=>{
   const c=document.createElement("button");c.className="allday"+(e.done?" done":"");c.style.setProperty("--c",colorOf(e.color));c.textContent=e.title;c.onclick=()=>openEditor(e,w,start);return c})}
+/* little colored dots: one per event, in time order */
+function dotsEl(list){
+  const box=document.createElement("span");box.className="dots";
+  const sorted=[...list].sort((a,b)=>(a.start||"").localeCompare(b.start||""));
+  sorted.slice(0,5).forEach(e=>{const i=document.createElement("i");i.style.background=colorOf(e.color);if(e.done)i.className="d";box.append(i)});
+  if(sorted.length>5){const p=document.createElement("em");p.textContent="+";box.append(p)}
+  return box;
+}
 function rangeText(a){const b=addDays(a,6);return a.getMonth()===b.getMonth()?`${a.getDate()}–${b.getDate()} ${MON[b.getMonth()]}`:`${a.getDate()} ${MON[a.getMonth()]} – ${b.getDate()} ${MON[b.getMonth()]}`}
 
 function render(){
@@ -389,7 +407,7 @@ function render(){
     for(let i=0;i<7;i++){
       const d=addDays(weekStart,i);
       const hc=document.createElement("div");hc.className="hc"+(iso(d)===todayIso?" today":"");
-      const hd=document.createElement("div");hd.className="hd";hd.innerHTML=`<b>${d.getDate()}</b>${DAYS[i]}`;
+      const hd=document.createElement("div");hd.className="hd";hd.innerHTML=`<b>${d.getDate()}</b>${DAYS[i]}`;hd.append(dotsEl(w.events.filter(x=>x.day===i)));
       hc.append(hd,...alldayEls(w,weekStart,i));head.append(hc);
       body.append(colEl(w,weekStart,i,h));
     }
@@ -407,12 +425,19 @@ function updateTop(){
   $("range").textContent=rangeText(ws);
   const tabs=$("tabs"),todayIso=iso(new Date());
   if(tabs.dataset.k!==visible.k){
-    tabs.dataset.k=visible.k;tabs.textContent="";
+    tabs.dataset.k=visible.k;tabs.dataset.sig="";tabs.textContent="";
     for(let i=0;i<7;i++){const d=addDays(ws,i),t=document.createElement("button");
       t.className="tab"+(iso(d)===todayIso?" today":"");t.innerHTML=`<span>${DAYS[i]}</span><b>${d.getDate()}</b>`;
       t.onclick=()=>scrollToDay(visible.k,i,null);tabs.append(t)}
   }
   [...tabs.children].forEach((t,i)=>t.classList.toggle("sel",i===visible.d));
+  const wk=weeks.get(visible.k)||(uid?week(ws):null);
+  if(wk){
+    /* rebuild only when this week's events changed, not on every scroll frame */
+    const sig=visible.k+"|"+wk.events.map(e=>e.day+e.start+e.color+(e.done?1:0)).join(",");
+    if(tabs.dataset.sig!==sig){tabs.dataset.sig=sig;
+      [...tabs.children].forEach((t,i)=>{t.querySelector(".dots")?.remove();t.append(dotsEl(wk.events.filter(x=>x.day===i)))})}
+  }
 }
 function topOffset(){return $("top").offsetHeight}
 function scrollToDay(k,d,min){
@@ -947,7 +972,7 @@ onAuthStateChanged(auth,user=>{
 });
 
 /* ---------- offline copy + auto-update ---------- */
-const BUILD="20261005224359";
+const BUILD="20261007142633";
 async function checkVersion(){
   if(!navigator.onLine)return;
   try{const r=await fetch("version.txt?t="+Date.now(),{cache:"no-store"});if(!r.ok)return;
