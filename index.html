@@ -185,8 +185,13 @@ input,select,button{font-weight:inherit}
 
 /* quick add line */
 .quick{display:flex;gap:8px;padding-bottom:8px}
-.quick input{flex:1;min-width:0;padding:9px 12px;border-radius:10px}
-.quick input:focus{border-color:var(--neon,#fff);box-shadow:0 0 10px rgba(255,255,255,.25)}
+.quick textarea{flex:1;min-width:0;padding:9px 12px;border-radius:10px;font:inherit;font-size:16px;color:var(--fg);background:var(--field);border:1px solid var(--line-h);resize:none;overflow:hidden;line-height:1.3;max-height:220px}
+.quick textarea:focus{outline:none;border-color:var(--neon,#fff);box-shadow:0 0 10px rgba(255,255,255,.25)}
+.quick{align-items:flex-end}
+.quick button{height:40px}
+.qprev.many{flex-direction:column;align-items:stretch;gap:4px;max-height:40vh;overflow:auto}
+.qprev.many div{display:flex;align-items:center;gap:8px}
+.quick input:focus,.quick-unused{border-color:var(--neon,#fff);box-shadow:0 0 10px rgba(255,255,255,.25)}
 .quick button{flex:none;background:var(--fg);color:var(--bg);border-radius:10px;padding:0 14px;font-weight:800}
 .qprev{display:flex;align-items:center;gap:8px;width:100%;text-align:left;font-size:.8rem;color:var(--fg);padding:0 2px 8px}
 .qprev i{width:10px;height:10px;border-radius:50%;flex:none}
@@ -247,7 +252,7 @@ body.daymode .tabs{display:grid}
       </div>
     </div>
     <form class="quick" id="qf" autocomplete="off">
-      <input id="q" placeholder="Добавление текстом" enterkeyhint="done" aria-label="Быстро добавить дело">
+      <textarea id="q" rows="1" placeholder="Добавление текстом" enterkeyhint="done" aria-label="Быстро добавить дело"></textarea>
       <button type="button" class="lng" id="q-lng" aria-label="Язык голосового ввода">RU</button>
       <button type="button" class="mic" id="q-mic" aria-label="Голосовой ввод"><svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><rect x="9" y="3" width="6" height="12" rx="3" fill="currentColor"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/></svg></button>
       <button type="submit" id="q-go" hidden>Добавить</button>
@@ -737,6 +742,7 @@ function enToRu(t){
 }
 function parseQuick(raw,now=new Date()){
   let t=" "+raw.toLowerCase().replace(/ё/g,"е").replace(/[,!?;]/g," ").replace(/\s+/g," ").trim()+" ";
+  t=t.replace(/(^|\s)[-–—]+(?=\s|$)/g," ");
   t=" "+enToRu(t.trim())+" ";
   /* spoken lead-ins: "добавь", "поставь мне", "прошу записать", "пожалуйста" … */
   const LEAD=/^(?:пожалуйста|плиз|прошу|можешь|можно|давай|ну|так|ок|окей|слушай|мне|себе|еще|ещё|пж|добавь|добавить|добавляй|поставь|поставить|поставьте|запиши|записать|запишите|внеси|внести|создай|создать|сделай|назначь|назначить|запланируй|запланировать|напиши|отметь|занеси|забей|кинь|закинь|новое|новую|дело|событие|встречу)\s+/;
@@ -796,6 +802,10 @@ function parseQuick(raw,now=new Date()){
     }
   }
 
+  /* a weekday next to an explicit date ("16.10 пт") is redundant: drop it */
+  if(date)for(const [full,short] of WDW)cut(new RegExp(`\\s(?:${full}[а-я]*|${short})\\s`));
+  /* "по мск" → shift to this device's time zone */
+  const msk=!!cut(/\s(?:по\s)?(?:мск|москве|московскому(?:\sвремени)?|msk|moscow\stime)\s/);
   /* time */
   const sfx="(утра|дня|вечера|ночи)";
   if(cut(/\s(?:в\s|на\s|к\s)?полдень\s/)){hh=12}
@@ -808,6 +818,11 @@ function parseQuick(raw,now=new Date()){
     if(m[2])hh=applySfx(hh,m[2]);else if(hh>=1&&hh<=6)hh+=12;
   }else if((m=cut(new RegExp(`\\s(\\d{1,2})\\s${sfx}\\s`)))){hh=applySfx(+m[1],m[2])}
   if(hh!=null&&(hh>23||mm>59))hh=null;
+  let shiftDays=0;
+  if(msk&&hh!=null){
+    const shift=Math.round(-now.getTimezoneOffset()-180);   /* minutes between here and Moscow (UTC+3) */
+    let m2=hh*60+mm+shift;shiftDays=Math.floor(m2/1440);m2=((m2%1440)+1440)%1440;hh=Math.floor(m2/60);mm=m2%60;
+  }
 
   /* title = what is left */
   /* drop little words that belonged to a removed part ("на |", "в |") and stray "|" */
@@ -819,7 +834,7 @@ function parseQuick(raw,now=new Date()){
   const orig=raw.trim().split(/\s+/);
   title=title.split(" ").map(w=>orig.find(o=>o.toLowerCase().replace(/ё/g,"е").replace(/[,!?;]/g,"")===w)?.replace(/[,!?;]/g,"")||w).join(" ");
   title=title?title[0].toUpperCase()+title.slice(1):"";
-  return {title,date:date||today,start:hh==null?null:fmt(hh*60+mm),dur};
+  return {title,date:addDays(date||today,shiftDays),start:hh==null?null:fmt(hh*60+mm),dur,hasDate:!!date,msk};
 }
 function applySfx(h,s){
   if(s==="утра")return h===12?0:h;
@@ -829,9 +844,10 @@ function applySfx(h,s){
   return h;
 }
 
-function quickParse(){
-  const v=$("q").value.trim();if(!v)return null;
-  const r=parseQuick(v);if(!r.title)return null;
+function quickOne(v,header){
+  const r=parseQuick(v);
+  if(header)r.title=r.title?header+" "+r.title.charAt(0).toLowerCase()+r.title.slice(1):header;
+  if(!r.title)return null;
   /* saved template: exact title first, then by word stem ("боксу", "тренировку по боксу", "бокс с Иваном") */
   const norm=x=>x.toLowerCase().replace(/ё/g,"е").trim();
   const stem=w=>w.length>4?w.slice(0,-2):w.length>3?w.slice(0,-1):w;
@@ -845,9 +861,35 @@ function quickParse(){
   const dur=r.dur??tpl?.dur??60;
   return {title:tpl&&exact?tpl.title:r.title,date:r.date,start:r.start,dur,allDay,color:tpl?.color||"white"};
 }
+/* one line → one event; several lines → several. A first line with no date or time ("ielts") names the rest. */
+function quickList(){
+  const lines=$("q").value.split(/\n|;/).map(x=>x.trim()).filter(Boolean);
+  if(!lines.length)return [];
+  let header="";
+  if(lines.length>1){const r=parseQuick(lines[0]);if(!r.hasDate&&r.start==null&&r.dur==null&&r.title){
+    header=r.title;lines.shift();
+    /* keep a saved template's spelling ("IELTS"), and short Latin words read as acronyms */
+    const t=templates.find(t=>t.title.toLowerCase()===header.toLowerCase());
+    if(t)header=t.title;else if(/^[a-z]{2,5}$/i.test(header))header=header.toUpperCase();
+  }}
+  return lines.map(l=>quickOne(l,header)).filter(Boolean);
+}
+function quickParse(){const l=quickList();return l.length===1?l[0]:null}
 function quickPreview(){
-  const p=quickParse(),el=$("q-prev");
-  $("q-go").hidden=!p;el.hidden=!p;if(!p)return;
+  const list=quickList(),p=list.length===1?list[0]:null,el=$("q-prev");
+  $("q-go").hidden=!list.length;el.hidden=!list.length;
+  $("q").style.height="auto";$("q").style.height=Math.min(220,$("q").scrollHeight+2)+"px";
+  if(list.length>1){
+    el.innerHTML="";el.classList.add("many");
+    const head=document.createElement("b");head.textContent=`${list.length} дел`;el.append(head);
+    for(const x of list){
+      const row=document.createElement("div");const dot=document.createElement("i");dot.style.background=colorOf(x.color);
+      const time=x.allDay?"без времени":`${x.start}–${fmt(Math.min(1439,toMin(x.start)+x.dur))}`;
+      row.append(dot,document.createTextNode(`${x.title} · ${dateLabel(x.date)} · ${time}`));el.append(row);
+    }
+    return;
+  }
+  el.classList.remove("many");if(!p)return;
   const time=p.allDay?"без времени":`${p.start}–${fmt(Math.min(1439,toMin(p.start)+p.dur))}`;
   el.innerHTML="";const dot=document.createElement("i");dot.style.background=colorOf(p.color);
   el.append(dot,document.createTextNode(`${p.title} · ${dateLabel(p.date)} · ${time}`));
@@ -873,13 +915,24 @@ function showAdded(p,date){
 }
 $("q").addEventListener("input",quickPreview);
 $("qf").onsubmit=ev=>{ev.preventDefault();
-  const p=quickParse();if(!p)return;
-  const end=Math.min(1439,toMin(p.start||"00:00")+p.dur);
-  const item={id:Math.random().toString(36).slice(2,10),title:p.title,color:p.color,day:(p.date.getDay()+6)%7,
-    start:p.allDay?"":p.start,end:p.allDay?"":fmt(end),done:false};
-  addItem(p.date,item);
-  $("q").value="";quickPreview();$("q").blur();showAdded(p,p.date);
+  const list=quickList();if(!list.length)return;
+  /* group by week so each week document is written once */
+  const byWeek=new Map();
+  for(const p of list){
+    const end=Math.min(1439,toMin(p.start||"00:00")+p.dur);
+    const item={id:Math.random().toString(36).slice(2,10),title:p.title,color:p.color,day:(p.date.getDay()+6)%7,
+      start:p.allDay?"":p.start,end:p.allDay?"":fmt(end),done:false};
+    const k=iso(monday(p.date));if(!byWeek.has(k))byWeek.set(k,{date:p.date,items:[]});byWeek.get(k).items.push(item);
+  }
+  for(const {date,items} of byWeek.values()){
+    const tw=week(monday(date));
+    if(tw.loaded){tw.events.push(...items);save(tw)}
+    else setDoc(tw.ref,{events:arrayUnion(...items),updatedAt:new Date().toISOString()},{merge:true}).catch(()=>setDot("off","Не сохранилось"));
+  }
+  const first=list.slice().sort((a,b)=>a.date-b.date)[0];
+  $("q").value="";quickPreview();$("q").blur();showAdded(first,first.date);
 };
+$("q").addEventListener("keydown",ev=>{if(ev.key==="Enter"&&!ev.shiftKey&&!ev.isComposing){ev.preventDefault();$("qf").requestSubmit()}});
 $("q-prev").onclick=()=>{
   const p=quickParse();if(!p)return;
   const ws=monday(p.date),day=(p.date.getDay()+6)%7;
@@ -972,7 +1025,7 @@ onAuthStateChanged(auth,user=>{
 });
 
 /* ---------- offline copy + auto-update ---------- */
-const BUILD="20261007142633";
+const BUILD="20261013184037";
 async function checkVersion(){
   if(!navigator.onLine)return;
   try{const r=await fetch("version.txt?t="+Date.now(),{cache:"no-store"});if(!r.ok)return;
