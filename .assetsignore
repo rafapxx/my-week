@@ -3,3 +3,4 @@ wrangler.jsonc
 .assetsignore
 bump.sh
 README.md
+worker.js
