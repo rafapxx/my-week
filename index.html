@@ -194,6 +194,7 @@ input,select,button{font-weight:inherit}
 .quick input:focus,.quick-unused{border-color:var(--neon,#fff);box-shadow:0 0 10px rgba(255,255,255,.25)}
 .quick button{flex:none;background:var(--fg);color:var(--bg);border-radius:10px;padding:0 14px;font-weight:800}
 .qprev{display:flex;align-items:center;gap:8px;width:100%;text-align:left;font-size:.8rem;color:var(--fg);padding:0 2px 8px}
+.qprev i.sq{border-radius:2px;background:transparent!important;box-shadow:inset 0 0 0 1.5px var(--fg)}
 .qprev i{width:10px;height:10px;border-radius:50%;flex:none}
 .qprev span{margin-left:auto;color:var(--muted);text-decoration:underline;text-underline-offset:3px}
 
@@ -223,6 +224,21 @@ input,select,button{font-weight:inherit}
 .rems{margin-top:-4px}
 .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(90px + env(safe-area-inset-bottom));z-index:20;max-width:min(420px,calc(100% - 32px));
   background:#1a1a1a;border:1px solid var(--line-h);color:var(--fg);padding:10px 14px;border-radius:12px;font-size:.85rem;box-shadow:0 8px 30px rgba(0,0,0,.6)}
+
+/* tasks */
+.seg.kind{margin:0 0 2px;align-self:flex-start}
+.tstack{position:absolute;z-index:1;display:flex;flex-direction:column;gap:2px;padding:2px 4px 3px;border:1px dashed rgba(255,255,255,.45);border-radius:6px;background:rgba(0,0,0,.55);backdrop-filter:blur(2px)}
+.tstack .tt{font-size:.62rem;color:var(--muted);font-variant-numeric:tabular-nums;line-height:1}
+.task{display:flex;align-items:center;gap:6px;min-width:0;cursor:pointer;font-size:.8rem;line-height:1.2;min-height:20px}
+.task .n{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.task.done .n{color:var(--dim);text-decoration:line-through}
+.tck{flex:none;width:14px;height:14px;border-radius:3px;box-shadow:inset 0 0 0 1.5px var(--fg);display:grid;place-items:center}
+.task.done .tck{background:var(--fg);box-shadow:none}
+.task.done .tck::after{content:"";width:7px;height:4px;border-left:2px solid var(--bg);border-bottom:2px solid var(--bg);transform:rotate(-45deg) translate(1px,-1px)}
+.task.bell .n::after{content:" ·";color:var(--muted)}
+.allday-task{flex:none;border:1px dashed rgba(255,255,255,.45);border-radius:4px;padding:2px 6px;max-width:100%}
+.dots i.tk{border-radius:1px;box-shadow:inset 0 0 0 1px var(--fg);background:transparent}
+.tab.sel .dots i.tk{box-shadow:inset 0 0 0 1px var(--bg)}
 body.daymode .tabs{display:grid}
 .seg{display:flex;background:var(--field);border:1px solid var(--line-h);border-radius:9px;padding:2px;margin-left:auto}
 .seg button{padding:5px 9px;border-radius:7px;font-size:.78rem;color:var(--muted)}
@@ -373,7 +389,28 @@ function colEl(w,start,i,h){
   ["pointerup","pointercancel","pointerleave"].forEach(t=>col.addEventListener(t,cancel));
   col.addEventListener("scroll",cancel);addEventListener("scroll",cancel,{passive:true,once:true});
   col.addEventListener("contextmenu",ev=>ev.preventDefault());
-  for(const it of lanes(w.events.filter(x=>x.day===i&&x.start))){
+  /* tasks at the same time share one compact stack; it takes part in the lane layout like an event */
+  const dayEv=w.events.filter(x=>x.day===i&&x.start);
+  const rowMin=Math.max(15,Math.round(26/h*60));
+  const groups=new Map();
+  for(const e of dayEv.filter(x=>x.kind==="task")){if(!groups.has(e.start))groups.set(e.start,[]);groups.get(e.start).push(e)}
+  const items=[...dayEv.filter(x=>x.kind!=="task"),
+    ...[...groups].map(([st,list])=>({__group:list,start:st,end:fmt(Math.min(1439,toMin(st)+rowMin*list.length+4))}))];
+  for(const it of lanes(items)){
+    if(it.e.__group){
+      const g=document.createElement("div");g.className="tstack";
+      g.style.top=(it.s/60*h)+"px";g.style.left=`calc(${it.l*100/it.n}% + 2px)`;g.style.width=`calc(${100/it.n}% - 4px)`;
+      for(const e of it.e.__group){
+        const r=document.createElement("div");r.className="task"+(e.done?" done":"");
+        const ck=document.createElement("button");ck.className="tck";ck.setAttribute("aria-label",e.done?"Снять отметку":"Готово");
+        ck.onclick=ev=>{ev.stopPropagation();e.done=!e.done;save(w);render()};
+        const n=document.createElement("span");n.className="n";n.textContent=e.title;
+        r.append(ck,n);if(e.remind!=null)r.classList.add("bell");
+        r.onclick=()=>openEditor(e,w,start);g.append(r);
+      }
+      const tm=document.createElement("span");tm.className="tt";tm.textContent=it.e.start;g.prepend(tm);
+      col.append(g);continue;
+    }
     const e=it.e,dur=it.en-it.s;
     const el=document.createElement("div");el.className="ev"+(e.done?" done":"")+(dur<45?" short":"");el.style.setProperty("--c",colorOf(e.color));
     el.style.top=(it.s/60*h)+"px";el.style.height=Math.max(dur/60*h-2,18)+"px";
@@ -389,12 +426,19 @@ function colEl(w,start,i,h){
   return col;
 }
 function alldayEls(w,start,i){return w.events.filter(x=>x.day===i&&!x.start).map(e=>{
+  if(e.kind==="task"){
+    const c=document.createElement("div");c.className="task allday-task"+(e.done?" done":"");
+    const ck=document.createElement("button");ck.className="tck";ck.setAttribute("aria-label",e.done?"Снять отметку":"Готово");
+    ck.onclick=ev=>{ev.stopPropagation();e.done=!e.done;save(w);render()};
+    const n=document.createElement("span");n.className="n";n.textContent=e.title;
+    c.append(ck,n);c.onclick=()=>openEditor(e,w,start);return c;
+  }
   const c=document.createElement("button");c.className="allday"+(e.done?" done":"");c.style.setProperty("--c",colorOf(e.color));c.textContent=e.title;c.onclick=()=>openEditor(e,w,start);return c})}
 /* little colored dots: one per event, in time order */
 function dotsEl(list){
   const box=document.createElement("span");box.className="dots";
   const sorted=[...list].sort((a,b)=>(a.start||"").localeCompare(b.start||""));
-  sorted.slice(0,5).forEach(e=>{const i=document.createElement("i");i.style.background=colorOf(e.color);if(e.done)i.className="d";box.append(i)});
+  sorted.slice(0,5).forEach(e=>{const i=document.createElement("i");if(e.kind==="task")i.className="tk";else i.style.background=colorOf(e.color);if(e.done)i.classList.add("d");box.append(i)});
   if(sorted.length>5){const p=document.createElement("em");p.textContent="+";box.append(p)}
   return box;
 }
@@ -546,13 +590,15 @@ function openEditor(e,w,wStart,day,s0,e0,P={}){
     start:(e&&e.start)||s0||nextSlot(),
     dur:60,
     keep:false,
-    remind:e?(e.remind??null):(P.remind??null)
+    remind:e?(e.remind??null):(P.remind??null),
+    kind:(e&&e.kind)||P.kind||"event"
   };
   const endSrc=(e&&e.end)||e0;
   if(endSrc){const d=toMin(endSrc)-toMin(st.start);if(d>0)st.dur=d}
   let active="start";
   const m=$("modal");
   m.innerHTML=`<div class="back" id="bk"><form class="sheet" id="f" autocomplete="off">
+    <div class="seg kind" id="f-kind"><button type="button" data-k="event">Дело</button><button type="button" data-k="task">Задача</button></div>
     ${isNew?`<div class="tpls" id="f-tpls"></div>`:""}
     <input id="f-title" maxlength="120" placeholder="Что делаем" aria-label="Название">
     <div class="colors" id="f-colors">${Object.entries(COLORS).map(([k,c])=>`<button type="button" class="cl" data-k="${k}" style="--c:${c}" aria-label="Цвет"></button>`).join("")}</div>
@@ -561,7 +607,7 @@ function openEditor(e,w,wStart,day,s0,e0,P={}){
     <div id="f-timed">
       <div class="row">
         <label class="fld"><span>Начало</span><input id="f-start" readonly inputmode="numeric" aria-label="Начало"></label>
-        <label class="fld"><span>Длительность</span><input id="f-dur" readonly inputmode="numeric" aria-label="Длительность"></label>
+        <label class="fld" id="f-durfld"><span>Длительность</span><input id="f-dur" readonly inputmode="numeric" aria-label="Длительность"></label>
       </div>
       <div class="ends" id="f-ends"></div>
     </div>
@@ -570,7 +616,7 @@ function openEditor(e,w,wStart,day,s0,e0,P={}){
     <div class="hint">Нажмите на поле ещё раз, чтобы ввести вручную.</div>
     <label class="sw">Напомнить<input type="checkbox" id="f-rem"></label>
     <div class="presets rems" id="f-rems"></div>
-    <label class="sw">Сохранить как шаблон<input type="checkbox" id="f-keep"></label>
+    <label class="sw" id="f-keepl">Сохранить как шаблон<input type="checkbox" id="f-keep"></label>
     <div class="acts">
       <button type="button" class="link" id="f-cancel">Отмена</button>
       ${isNew?"":`<button type="button" class="link" id="f-del">Удалить</button>`}
@@ -613,6 +659,14 @@ function openEditor(e,w,wStart,day,s0,e0,P={}){
     Object.entries(F).forEach(([k,el])=>el.classList.toggle("act",k===active));
     m.querySelectorAll(".cl").forEach(b=>b.classList.toggle("on",b.dataset.k===st.color));
     $("f-title").style.setProperty("--c",colorOf(st.color));
+    /* task: no color, no duration, no template */
+    const task=st.kind==="task";
+    $("f-kind").querySelectorAll("button").forEach(b=>b.classList.toggle("on",b.dataset.k===st.kind));
+    $("f-colors").hidden=task;$("f-durfld").hidden=task;$("f-ends").hidden=task;$("f-keepl").hidden=task;
+    if($("f-tpls"))$("f-tpls").hidden=task||!templates.length;
+    if(task)$("f-presets").hidden=true;
+    $("f-title").placeholder=task?"Что сделать":"Что делаем";
+    $("f").classList.toggle("is-task",task);
   }
   function buildPicker(){
     const p=$("f-pick");p.textContent="";
@@ -656,6 +710,8 @@ function openEditor(e,w,wStart,day,s0,e0,P={}){
     else{const d=parseDur(el.value);if(d&&d>0)st.dur=Math.min(1440,d)}
     el.readOnly=true;show();buildPicker();
   }
+  $("f-kind").onclick=ev=>{const b=ev.target.closest("button");if(!b)return;st.kind=b.dataset.k;
+    if(st.kind==="task"&&active==="dur")active="start";show();buildPicker()};
   $("f-presets").onclick=ev=>{const b=ev.target.closest(".ps");if(!b)return;st.dur=+b.dataset.m;show();buildPicker()};
   $("f-colors").onclick=ev=>{const b=ev.target.closest(".cl");if(!b)return;st.color=b.dataset.k;show()};
   $("f-all").onchange=ev=>{st.allDay=ev.target.checked;active=st.allDay?"date":"start";show();buildPicker();paintRem()};
@@ -682,7 +738,7 @@ function openEditor(e,w,wStart,day,s0,e0,P={}){
       box.append(b);
     }
   }
-  window.__paintTpl=paintTpl;paintTpl();
+  window.__paintTpl=()=>{paintTpl();show()};paintTpl();
 
   const close=()=>{m.innerHTML="";window.__paintTpl=null};
   $("f-cancel").onclick=close;
@@ -698,13 +754,14 @@ function openEditor(e,w,wStart,day,s0,e0,P={}){
     const item={id:e?e.id:Math.random().toString(36).slice(2,10),title,color:st.color,day:(st.date.getDay()+6)%7,
       start:st.allDay?"":st.start,end:st.allDay?"":fmt(end),done:e?!!e.done:false};
     if(st.remind!=null)item.remind=st.remind;
+    if(st.kind==="task"){item.kind="task";item.end="";delete item.color}
     if(e&&w.k!==tw.k){w.events=w.events.filter(x=>x.id!==e.id);save(w)}
     if(e&&w.k===tw.k){w.events=w.events.map(x=>x.id===e.id?item:x);save(w)}
     else if(tw.loaded){tw.events.push(item);save(tw)}
     else{setDoc(tw.ref,{events:arrayUnion(item),updatedAt:new Date().toISOString()},{merge:true}).catch(()=>setDot("off","Не сохранилось"))}
     /* template: everything except date and time */
     const same=t=>t.title.toLowerCase()===title.toLowerCase();
-    if(st.keep){
+    if(st.keep&&st.kind!=="task"){
       const t={id:(templates.find(same)||{}).id||Math.random().toString(36).slice(2,10),title,color:st.color,dur:st.dur,allDay:st.allDay,remind:st.remind};
       templates=templates.some(same)?templates.map(x=>same(x)?t:x):[...templates,t];saveTemplates();
     }else if(!isNew&&templates.some(same)){templates=templates.filter(x=>!same(x));saveTemplates()}
@@ -851,6 +908,7 @@ function parseQuick(raw,now=new Date()){
     hh=m[1]!=null?+m[1]:1;
     if(m[2])hh=applySfx(hh,m[2]);else if(hh>=1&&hh<=6)hh+=12;
   }else if((m=cut(new RegExp(`\\s(\\d{1,2})\\s${sfx}\\s`)))){hh=applySfx(+m[1],m[2])}
+  else if((m=cut(new RegExp(`\\s(?:\\|\\s)?(\\d{1,2})\\s(?:час|часа|часов)(?:\\s${sfx})?\\s`)))){hh=+m[1];if(m[2])hh=applySfx(hh,m[2]);else if(hh>=1&&hh<=6)hh+=12}
   if(hh!=null&&(hh>23||mm>59))hh=null;
   let shiftDays=0;
   if(msk&&hh!=null){
@@ -895,18 +953,44 @@ function quickOne(v,header){
   const dur=r.dur??tpl?.dur??60;
   return {title:tpl&&exact?tpl.title:r.title,date:r.date,start:r.start,dur,allDay,color:tpl?.color||"white",remind:tpl?.remind??null};
 }
+/* "задачи геометрия, ielts, право на сегодня 15 часов" → one task per item, sharing the date and time */
+/* exam names and other acronyms people type in lower case */
+const ACRO=/^(?:ielts|toefl|sat|act|gre|gmat|csca|hsk|ege|oge|егэ|огэ|dele|delf|ib|ap|[bcdfghjklmnpqrstvwxz]{2,5})$/i;
+const TASKW=/(^|[\s,:])(?:задач[аиуе]?|задачк[аиу]|tasks?|to-?dos?)(?=[\s:,.]|$)/i;
+function taskItems(v,shared={}){
+  const m=v.toLowerCase().replace(/ё/g,"е").match(TASKW);if(!m&&!shared.force)return null;
+  const rest=m?v.slice(0,m.index)+m[1]+" "+v.slice(m.index+m[0].length):v;
+  let segs=rest.split(/[,;]|:(?=\s|$)/);
+  if(segs.length>1){const last=segs.pop();segs.push(...last.split(/\s+и\s+/))}
+  const parsed=segs.map(x=>x.trim()).filter(Boolean).map(x=>parseQuick(x));
+  const withDate=parsed.find(r=>r.hasDate),withTime=parsed.find(r=>r.start!=null);
+  const date=withDate?withDate.date:(shared.date||parsed[0]?.date||new Date());
+  const start=withTime?withTime.start:(shared.start??null);
+  const fix=t=>ACRO.test(t)?t.toUpperCase():t;
+  return parsed.filter(r=>r.title).map(r=>({title:fix(r.title),date,start,allDay:start==null,dur:0,kind:"task",remind:null,color:null}));
+}
 /* one line → one event; several lines → several. A first line with no date or time ("ielts") names the rest. */
 function quickList(){
   const lines=$("q").value.split(/\n|;/).map(x=>x.trim()).filter(Boolean);
   if(!lines.length)return [];
+  /* a first line like "задачи на завтра в 15:" turns the following lines into tasks */
+  if(lines.length>1&&TASKW.test(lines[0].toLowerCase().replace(/ё/g,"е"))){
+    const h=taskItems(lines[0]);
+    if(h&&h.length===0){
+      const hr=parseQuick(lines[0].replace(TASKW,"$1 "));
+      const shared={force:true,date:hr.hasDate?hr.date:null,start:hr.start};
+      return lines.slice(1).flatMap(l=>taskItems(l,shared)||[]);
+    }
+  }
+  if(lines.length===1){const t=taskItems(lines[0]);if(t)return t}
   let header="";
   if(lines.length>1){const r=parseQuick(lines[0]);if(!r.hasDate&&r.start==null&&r.dur==null&&r.title){
     header=r.title;lines.shift();
     /* keep a saved template's spelling ("IELTS"), and short Latin words read as acronyms */
     const t=templates.find(t=>t.title.toLowerCase()===header.toLowerCase());
-    if(t)header=t.title;else if(/^[a-z]{2,5}$/i.test(header))header=header.toUpperCase();
+    if(t)header=t.title;else if(ACRO.test(header))header=header.toUpperCase();
   }}
-  return lines.map(l=>quickOne(l,header)).filter(Boolean);
+  return lines.flatMap(l=>taskItems(l)||[quickOne(l,header)]).filter(Boolean);
 }
 function quickParse(){const l=quickList();return l.length===1?l[0]:null}
 function quickPreview(){
@@ -917,15 +1001,16 @@ function quickPreview(){
     el.innerHTML="";el.classList.add("many");
     const head=document.createElement("b");head.textContent=`${list.length} дел`;el.append(head);
     for(const x of list){
-      const row=document.createElement("div");const dot=document.createElement("i");dot.style.background=colorOf(x.color);
-      const time=x.allDay?"без времени":`${x.start}–${fmt(Math.min(1439,toMin(x.start)+x.dur))}`;
+      const row=document.createElement("div");const dot=document.createElement("i");
+      if(x.kind==="task")dot.className="sq";else dot.style.background=colorOf(x.color);
+      const time=x.allDay?"без времени":x.kind==="task"?x.start:`${x.start}–${fmt(Math.min(1439,toMin(x.start)+x.dur))}`;
       row.append(dot,document.createTextNode(`${x.title} · ${dateLabel(x.date)} · ${time}`));el.append(row);
     }
     return;
   }
   el.classList.remove("many");if(!p)return;
-  const time=p.allDay?"без времени":`${p.start}–${fmt(Math.min(1439,toMin(p.start)+p.dur))}`;
-  el.innerHTML="";const dot=document.createElement("i");dot.style.background=colorOf(p.color);
+  const time=p.allDay?"без времени":p.kind==="task"?p.start:`${p.start}–${fmt(Math.min(1439,toMin(p.start)+p.dur))}`;
+  el.innerHTML="";const dot=document.createElement("i");if(p.kind==="task")dot.className="sq";else dot.style.background=colorOf(p.color);
   el.append(dot,document.createTextNode(`${p.title} · ${dateLabel(p.date)} · ${time}`));
   const hint=document.createElement("span");hint.textContent="изменить";el.append(hint);
 }
@@ -957,6 +1042,7 @@ $("qf").onsubmit=ev=>{ev.preventDefault();
     const item={id:Math.random().toString(36).slice(2,10),title:p.title,color:p.color,day:(p.date.getDay()+6)%7,
       start:p.allDay?"":p.start,end:p.allDay?"":fmt(end),done:false};
     if(p.remind!=null)item.remind=p.remind;
+    if(p.kind==="task"){item.kind="task";item.end="";delete item.color}
     const k=iso(monday(p.date));if(!byWeek.has(k))byWeek.set(k,{date:p.date,items:[]});byWeek.get(k).items.push(item);
   }
   for(const {date,items} of byWeek.values()){
@@ -973,7 +1059,7 @@ $("q-prev").onclick=()=>{
   const ws=monday(p.date),day=(p.date.getDay()+6)%7;
   const s0=p.start||null,e0=p.start?fmt(Math.min(1439,toMin(p.start)+p.dur)):null;
   $("q").value="";quickPreview();$("q").blur();
-  openEditor(null,null,ws,day,s0,e0,{title:p.title,color:p.color,allDay:p.allDay,remind:p.remind});
+  openEditor(null,null,ws,day,s0,e0,{title:p.title,color:p.color||"white",allDay:p.allDay,remind:p.remind,kind:p.kind});
 };
 
 /* voice input: Safari / Chrome speech recognition → the quick-add line */
@@ -1107,7 +1193,7 @@ onAuthStateChanged(auth,user=>{
 });
 
 /* ---------- offline copy + auto-update ---------- */
-const BUILD="20261014184232";
+const BUILD="20261015131720";
 async function checkVersion(){
   if(!navigator.onLine)return;
   try{const r=await fetch("version.txt?t="+Date.now(),{cache:"no-store"});if(!r.ok)return;
