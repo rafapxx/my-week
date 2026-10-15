@@ -793,7 +793,7 @@ $("fab").onclick=()=>openEditor(null);
 const NUMW={"ноль":0,"один":1,"одну":1,"одного":1,"два":2,"две":2,"двух":2,"три":3,"трех":3,"четыре":4,"четырех":4,"пять":5,"пяти":5,"шесть":6,"шести":6,"семь":7,"семи":7,"восемь":8,"восьми":8,"девять":9,"девяти":9,"десять":10,"десяти":10,"одиннадцать":11,"одиннадцати":11,"двенадцать":12,"двенадцати":12,"тринадцать":13,"четырнадцать":14,"пятнадцать":15,"шестнадцать":16,"семнадцать":17,"восемнадцать":18,"девятнадцать":19,"двадцать":20,"тридцать":30,"сорок":40,"пятьдесят":50};
 const ORDW={"первого":1,"второго":2,"третьего":3,"четвертого":4,"пятого":5,"шестого":6,"седьмого":7,"восьмого":8,"девятого":9,"десятого":10,"одиннадцатого":11,"двенадцатого":12};
 const MONW=[/^янв/,/^фев/,/^мар/,/^апр/,/^ма[яй]/,/^июн/,/^июл/,/^авг/,/^сен/,/^окт/,/^ноя/,/^дек/];
-const WDW=[["понедельник","пн"],["вторник","вт"],["сред","ср"],["четверг","чт"],["пятниц","пт"],["суббот","сб"],["воскресень","вс"]];
+const WDW=[["понед","пн"],["вторн","вт"],["сред","ср"],["четв","чт"],["пятн","пт"],["суб","сб"],["воскр","вс"]];
 
 function wordsToDigits(t){
   /* "двадцать пять" → "25", "пять" → "5"; "полпятого" → "4:30" */
@@ -863,6 +863,7 @@ function parseQuick(raw,now=new Date()){
   const today=new Date(now.getFullYear(),now.getMonth(),now.getDate());
   let dur=null,date=null,hh=null,mm=0,m;
 
+  t=t.replace(/(\s)среди(?=\s)/g,"$1ср\u0435\u0301ди");
   /* reminder: "с напоминанием" (at the start), "с напоминанием за 15 минут", "напомни за час" */
   let remind=null;
   {const rm=t.match(/\s(?:с\s|и\s)?(?:напоминани(?:ем|е|я)|напомни(?:ть|те)?(?:\sмне)?)(?:\sза\s(?:(\d+(?:[.,]\d+)?)\s?(минут[уы]?|мин|м|часа|часов|час|ч|дн[яей]|день)|(час|полчаса|день|сутки|полтора\sчаса)))?(?=\s)/);
@@ -950,6 +951,7 @@ function parseQuick(raw,now=new Date()){
   /* restore the user's own capital letters */
   const orig=raw.trim().split(/\s+/);
   title=title.split(" ").map(w=>orig.find(o=>o.toLowerCase().replace(/ё/g,"е").replace(/[,!?;]/g,"")===w)?.replace(/[,!?;]/g,"")||w).join(" ");
+  title=title.replace(/ср\u0435\u0301ди/g,"среди");
   title=title?title[0].toUpperCase()+title.slice(1):"";
   return {title,date:addDays(date||today,shiftDays),start:hh==null?null:fmt(hh*60+mm),dur,hasDate:!!date,msk,remind};
 }
@@ -962,7 +964,7 @@ function applySfx(h,s){
 }
 
 /* ---------- repeats: "каждое воскресенье", "по средам", "каждый день", "по будням", "every monday" ---------- */
-const WD_RE="понедельник\\S*|вторник\\S*|сред[аыуе]\\S*|четверг\\S*|пятниц\\S*|суббот\\S*|воскресень\\S*|пн|вт|ср|чт|пт|сб|вс|mondays?|tuesdays?|wednesdays?|thursdays?|fridays?|saturdays?|sundays?|mon|tue|wed|thu|fri|sat|sun";
+const WD_RE="понед\\S*|вторн\\S*|сред[аыуе]\\S*|четв\\S*|пятн\\S*|суб\\S*|воскр\\S*|пн|вт|ср|чт|пт|сб|вс|mondays?|tuesdays?|wednesdays?|thursdays?|fridays?|saturdays?|sundays?|mon|tue|wed|thu|fri|sat|sun";
 const wdIndex=w=>{w=w.toLowerCase().replace(/ё/g,"е");
   const ru=WDW.findIndex(([f,s])=>w.startsWith(f)||w===s);if(ru>=0)return ru;
   return ["mon","tue","wed","thu","fri","sat","sun"].findIndex(x=>w.startsWith(x))};
@@ -1164,6 +1166,7 @@ function quickOne(v,header){
   }
   const allDay=r.start==null;
   const dur=r.dur??tpl?.dur??60;
+  if(!tpl&&ACRO.test(r.title))r.title=r.title.toUpperCase();
   return {title:tpl&&exact?tpl.title:r.title,date:r.date,start:r.start,dur,allDay,color:tpl?.color||"white",remind:r.remind??tpl?.remind??null,hasDate:r.hasDate};
 }
 /* "задачи геометрия, ielts, право на сегодня 15 часов" → one task per item, sharing the date and time */
@@ -1231,6 +1234,7 @@ function quickPreview(){
   const time=p.allDay?"без времени":p.kind==="task"?p.start:`${p.start}–${fmt(Math.min(1439,toMin(p.start)+p.dur))}`;
   el.innerHTML="";const dot=document.createElement("i");if(p.kind==="task")dot.className="sq";else dot.style.background=colorOf(p.color);
   el.append(dot,document.createTextNode(`${p.title} · ${dateLabel(p.date)} · ${time}`));
+  if(p.remind!=null){const b=document.createElement("em");b.textContent=p.remind?` · напомнить за ${durLabel(p.remind)}`:" · напомнить";el.append(b)}
   const hint=document.createElement("span");hint.textContent="изменить";el.append(hint);
 }
 const _qp=quickPreview;quickPreview=function(){_qp();document.documentElement.style.setProperty("--topH",$("top").offsetHeight+"px")};
@@ -1420,7 +1424,7 @@ onAuthStateChanged(auth,user=>{
 });
 
 /* ---------- offline copy + auto-update ---------- */
-const BUILD="20261015133102";
+const BUILD="20261015133416";
 async function checkVersion(){
   if(!navigator.onLine)return;
   try{const r=await fetch("version.txt?t="+Date.now(),{cache:"no-store"});if(!r.ok)return;
