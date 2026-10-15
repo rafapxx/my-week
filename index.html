@@ -239,6 +239,15 @@ input,select,button{font-weight:inherit}
 .allday-task{flex:none;border:1px dashed rgba(255,255,255,.45);border-radius:4px;padding:2px 6px;max-width:100%}
 .dots i.tk{border-radius:1px;box-shadow:inset 0 0 0 1px var(--fg);background:transparent}
 .tab.sel .dots i.tk{box-shadow:inset 0 0 0 1px var(--bg)}
+
+/* delete by text, repeats */
+.qprev.del b{color:var(--now)}
+.drow{display:flex;align-items:center;gap:8px;flex-wrap:wrap;cursor:pointer}
+.drow input{width:16px;height:16px;padding:0;accent-color:var(--now);flex:none}
+.allrep{font-size:.72rem;color:var(--muted);border:1px solid var(--line-h);border-radius:6px;padding:2px 6px;margin-left:auto}
+.allrep.on{color:#fff;background:var(--now);border-color:var(--now)}
+.quick button.danger{background:var(--now);color:#fff}
+.qprev em{font-style:normal;color:var(--muted)}
 body.daymode .tabs{display:grid}
 .seg{display:flex;background:var(--field);border:1px solid var(--line-h);border-radius:9px;padding:2px;margin-left:auto}
 .seg button{padding:5px 9px;border-radius:7px;font-size:.78rem;color:var(--muted)}
@@ -297,7 +306,7 @@ body.daymode .tabs{display:grid}
 <script type="module">
 import {initializeApp} from "https://www.gstatic.com/firebasejs/11.0.2/firebase-app.js";
 import {getAuth,onAuthStateChanged,signInWithEmailAndPassword,signOut} from "https://www.gstatic.com/firebasejs/11.0.2/firebase-auth.js";
-import {initializeFirestore,persistentLocalCache,persistentMultipleTabManager,doc,onSnapshot,setDoc,arrayUnion} from "https://www.gstatic.com/firebasejs/11.0.2/firebase-firestore.js";
+import {initializeFirestore,persistentLocalCache,persistentMultipleTabManager,doc,onSnapshot,setDoc,getDoc,arrayUnion} from "https://www.gstatic.com/firebasejs/11.0.2/firebase-firestore.js";
 
 const firebaseConfig={
   apiKey:"AIzaSyCS-a6ROL_7dvV9VxabCHjqT1R4e8bkT9w",
@@ -347,6 +356,7 @@ function week(start){
     w.events=d&&Array.isArray(d.events)?d.events.map(e=>({...e})):[];
     w.pending=s.metadata.hasPendingWrites;w.loaded=true;
     schedule();syncState();
+    if($("q").value.trim())quickPreview();
   },()=>setDot("off","Нет доступа к базе. Проверьте правила Firestore"));
   return w;
 }
@@ -404,7 +414,7 @@ function colEl(w,start,i,h){
         const r=document.createElement("div");r.className="task"+(e.done?" done":"");
         const ck=document.createElement("button");ck.className="tck";ck.setAttribute("aria-label",e.done?"Снять отметку":"Готово");
         ck.onclick=ev=>{ev.stopPropagation();e.done=!e.done;save(w);render()};
-        const n=document.createElement("span");n.className="n";n.textContent=e.title;
+        const n=document.createElement("span");n.className="n";n.textContent=(e.series?"↻ ":"")+e.title;
         r.append(ck,n);if(e.remind!=null)r.classList.add("bell");
         r.onclick=()=>openEditor(e,w,start);g.append(r);
       }
@@ -415,7 +425,7 @@ function colEl(w,start,i,h){
     const el=document.createElement("div");el.className="ev"+(e.done?" done":"")+(dur<45?" short":"");el.style.setProperty("--c",colorOf(e.color));
     el.style.top=(it.s/60*h)+"px";el.style.height=Math.max(dur/60*h-2,18)+"px";
     el.style.left=`calc(${it.l*100/it.n}% + 2px)`;el.style.width=`calc(${100/it.n}% - 4px)`;
-    const t=document.createElement("span");t.className="t";t.textContent=e.start+(e.end?"–"+e.end:"");if(e.remind!=null)t.classList.add("bell");
+    const t=document.createElement("span");t.className="t";t.textContent=(e.series?"↻ ":"")+e.start+(e.end?"–"+e.end:"");if(e.remind!=null)t.classList.add("bell");
     const n=document.createElement("span");n.className="n";n.textContent=e.title;
     const ck=document.createElement("button");ck.className="ck";ck.setAttribute("aria-label",e.done?"Снять отметку":"Готово");
     ck.onclick=ev=>{ev.stopPropagation();e.done=!e.done;save(w);render()};
@@ -620,6 +630,7 @@ function openEditor(e,w,wStart,day,s0,e0,P={}){
     <div class="acts">
       <button type="button" class="link" id="f-cancel">Отмена</button>
       ${isNew?"":`<button type="button" class="link" id="f-del">Удалить</button>`}
+      ${!isNew&&e.series?`<button type="button" class="link" id="f-delser">Удалить серию</button>`:""}
       <button type="submit" class="save">${isNew?"Добавить":"Сохранить"}</button>
     </div>
   </form></div>`;
@@ -743,6 +754,9 @@ function openEditor(e,w,wStart,day,s0,e0,P={}){
   const close=()=>{m.innerHTML="";window.__paintTpl=null};
   $("f-cancel").onclick=close;
   $("bk").onclick=ev=>{if(ev.target.id==="bk")close()};
+  if(!isNew&&e.series){let a2=false;$("f-delser").onclick=async()=>{
+    if(!a2){a2=true;$("f-delser").textContent="Удалить все будущие?";return}
+    close();await removeSeries(e.series);toast("Серия удалена")}}
   if(!isNew){let armed=false;$("f-del").onclick=()=>{
     if(!armed){armed=true;$("f-del").textContent="Точно?";return}
     w.events=w.events.filter(x=>x.id!==e.id);save(w);render();close()}}
@@ -755,6 +769,7 @@ function openEditor(e,w,wStart,day,s0,e0,P={}){
       start:st.allDay?"":st.start,end:st.allDay?"":fmt(end),done:e?!!e.done:false};
     if(st.remind!=null)item.remind=st.remind;
     if(st.kind==="task"){item.kind="task";item.end="";delete item.color}
+    if(e&&e.series)item.series=e.series;
     if(e&&w.k!==tw.k){w.events=w.events.filter(x=>x.id!==e.id);save(w)}
     if(e&&w.k===tw.k){w.events=w.events.map(x=>x.id===e.id?item:x);save(w)}
     else if(tw.loaded){tw.events.push(item);save(tw)}
@@ -806,7 +821,9 @@ function enToRu(t){
   t=t.replace(/\s(an?|one)\s(hour)(?=\s)/g," 1 $2").replace(/\s(an?)\s(day|week)(?=\s)/g," 1 $2");
   t=t.replace(/(?<=\s)[a-z]+(?=[\s-])/g,w=>ENNUM[w]!=null?String(ENNUM[w]):w);
   const rules=[
-    [/\s(?:please|pls|plz|can you|could you|would you|i need to|i have to|i have|i've got|remind me to|remind me|let's|lets)(?=\s)/g," "],
+    [/\s(?:with\s(?:a\s)?reminders?|remind\sme)\s(\d+)\s?(min|mins|minutes?|h|hrs?|hours?)\s(?:before|earlier)(?=\s)/g,(m,n,u)=>` с напоминанием за ${n} ${/^h/.test(u)?"часа":"минут"}`],
+    [/\s(?:with\s(?:a\s)?reminders?|remind\sme(?:\sto)?)(?=\s)/g," с напоминанием"],
+    [/\s(?:please|pls|plz|can you|could you|would you|i need to|i have to|i have|i've got|let's|lets)(?=\s)/g," "],
     [/^\s*(?:add|put|schedule|create|set up|set|book|plan|make|new|an?\s(?=event|task)|event|task)(?=\s)/,""],
     [/^\s*(?:add|put|schedule|create|set up|set|book|plan|make)(?=\s)/,""],
     [/\s(?:for\s)?half\san\shour(?=\s)/g," на полчаса"],
@@ -836,7 +853,7 @@ function parseQuick(raw,now=new Date()){
   t=t.replace(/(^|\s)[-–—]+(?=\s|$)/g," ");
   t=" "+enToRu(t.trim())+" ";
   /* spoken lead-ins: "добавь", "поставь мне", "прошу записать", "пожалуйста" … */
-  const LEAD=/^(?:пожалуйста|плиз|прошу|можешь|можно|давай|ну|так|ок|окей|слушай|мне|себе|еще|ещё|пж|добавь|добавить|добавляй|поставь|поставить|поставьте|запиши|записать|запишите|внеси|внести|создай|создать|сделай|назначь|назначить|запланируй|запланировать|напиши|отметь|занеси|забей|кинь|закинь|новое|новую|дело|событие|встречу)\s+/;
+  const LEAD=/^(?:пожалуйста|плиз|прошу|можешь|можно|давай|ну|так|ок|окей|слушай|мне|себе|еще|ещё|пж|добавь|добавить|добавляй|поставь|поставить|поставьте|запиши|записать|запишите|внеси|внести|создай|создать|сделай|назначь|назначить|запланируй|запланировать|напиши|отметь|занеси|забей|кинь|закинь|новое|новую|дело|событие)\s+/;
   t=t.trim();let lead=false;for(let k=0;k<6;k++){const n=t.replace(LEAD,"");if(n===t||!n.trim())break;t=n;lead=true}
   /* after "добавь …" the noun comes in accusative: "математику" → "математика", "лекцию" → "лекция" */
   t=" "+t+" ";
@@ -846,6 +863,14 @@ function parseQuick(raw,now=new Date()){
   const today=new Date(now.getFullYear(),now.getMonth(),now.getDate());
   let dur=null,date=null,hh=null,mm=0,m;
 
+  /* reminder: "с напоминанием" (at the start), "с напоминанием за 15 минут", "напомни за час" */
+  let remind=null;
+  {const rm=t.match(/\s(?:с\s|и\s)?(?:напоминани(?:ем|е|я)|напомни(?:ть|те)?(?:\sмне)?)(?:\sза\s(?:(\d+(?:[.,]\d+)?)\s?(минут[уы]?|мин|м|часа|часов|час|ч|дн[яей]|день)|(час|полчаса|день|сутки|полтора\sчаса)))?(?=\s)/);
+   if(rm){t=t.replace(rm[0]," | ");
+     if(rm[1]){const n=parseFloat(rm[1].replace(",","."));remind=Math.round(/^ч|^час/.test(rm[2])?n*60:/^д/.test(rm[2])?n*1440:n)}
+     else if(rm[3])remind={"час":60,"полчаса":30,"день":1440,"сутки":1440,"полтора часа":90}[rm[3]];
+     else remind=0}}
+  t=t.replace(/\s(?:дело|событие)(?=\s)/g," ");
   /* duration as one word: "четырехчасовой", "2-часовая", "получасовой", "сорокапятиминутная" */
   const PRE={"":1,"одно":1,"двух":2,"трех":3,"четырех":4,"пяти":5,"шести":6,"семи":7,"восьми":8,"девяти":9,"десяти":10,"одиннадцати":11,"двенадцати":12,"полутора":1.5,"полу":0.5,
     "пятнадцати":15,"двадцати":20,"тридцати":30,"сорока":40,"сорокапяти":45,"пятидесяти":50,"девяноста":90};
@@ -926,7 +951,7 @@ function parseQuick(raw,now=new Date()){
   const orig=raw.trim().split(/\s+/);
   title=title.split(" ").map(w=>orig.find(o=>o.toLowerCase().replace(/ё/g,"е").replace(/[,!?;]/g,"")===w)?.replace(/[,!?;]/g,"")||w).join(" ");
   title=title?title[0].toUpperCase()+title.slice(1):"";
-  return {title,date:addDays(date||today,shiftDays),start:hh==null?null:fmt(hh*60+mm),dur,hasDate:!!date,msk};
+  return {title,date:addDays(date||today,shiftDays),start:hh==null?null:fmt(hh*60+mm),dur,hasDate:!!date,msk,remind};
 }
 function applySfx(h,s){
   if(s==="утра")return h===12?0:h;
@@ -936,6 +961,194 @@ function applySfx(h,s){
   return h;
 }
 
+/* ---------- repeats: "каждое воскресенье", "по средам", "каждый день", "по будням", "every monday" ---------- */
+const WD_RE="понедельник\\S*|вторник\\S*|сред[аыуе]\\S*|четверг\\S*|пятниц\\S*|суббот\\S*|воскресень\\S*|пн|вт|ср|чт|пт|сб|вс|mondays?|tuesdays?|wednesdays?|thursdays?|fridays?|saturdays?|sundays?|mon|tue|wed|thu|fri|sat|sun";
+const wdIndex=w=>{w=w.toLowerCase().replace(/ё/g,"е");
+  const ru=WDW.findIndex(([f,s])=>w.startsWith(f)||w===s);if(ru>=0)return ru;
+  return ["mon","tue","wed","thu","fri","sat","sun"].findIndex(x=>w.startsWith(x))};
+function parseRepeat(v){
+  let t=" "+v.replace(/ё/g,"е")+" ",days=null,m;
+  const take=re=>{const x=t.match(re);if(x)t=t.replace(x[0]," ");return x};
+  if(take(/\s(?:на\s)?(?:каждый\sдень|ежедневно|every\sday|daily)(?=\s)/i))days=[0,1,2,3,4,5,6];
+  else if(take(/\s(?:на\s)?(?:по\sбудн\S*(?:\sдн\S*)?|кажд\S*\sбудн\S*(?:\sдн\S*)?|every\sweekday|weekdays)(?=\s)/i))days=[0,1,2,3,4];
+  else if(take(/\s(?:на\s)?(?:по\sвыходн\S*|кажд\S*\sвыходн\S*|every\sweekend|weekends)(?=\s)/i))days=[5,6];
+  else if((m=take(new RegExp(`\\s(?:на\\s|в\\s)?(?:кажд(?:ый|ое|ую|ые|ой)|по|every)\\s((?:${WD_RE})(?:\\s*(?:,|и|and)\\s*(?:${WD_RE}))*)(?=\\s)`,"i")))){
+    days=[...new Set(m[1].split(/\s*(?:,|\sи\s|\sand\s)\s*/i).map(wdIndex).filter(x=>x>=0))].sort();
+  }
+  return days&&days.length?{days,rest:t.trim()}:null;
+}
+const DAYS_FULL=["понедельник","вторник","среду","четверг","пятницу","субботу","воскресенье"];
+function repeatLabel(days){
+  if(days.length===7)return "каждый день";
+  if(days.join()==="0,1,2,3,4")return "по будням";
+  if(days.join()==="5,6")return "по выходным";
+  return "каждый "+days.map(d=>DAYS[d].toLowerCase()).join(", ");
+}
+function firstOccurrence(days,start,from){
+  const now=new Date(),base=dayOnly(from||now);
+  for(let i=0;i<8;i++){const d=addDays(base,i),wd=(d.getDay()+6)%7;
+    if(!days.includes(wd))continue;
+    if(iso(d)===iso(now)&&start&&toMin(start)<=now.getHours()*60+now.getMinutes())continue;
+    return d}
+  return base;
+}
+
+/* series rules live in users/{uid}/meta/repeats; the next 12 weeks are written out as ordinary events */
+let repeats=[],repUnsub=null,repRef=null,repTopped=false;
+const HORIZON=84;
+function watchRepeats(){
+  repRef=doc(fs,"users",uid,"meta","repeats");repTopped=false;
+  repUnsub=onSnapshot(repRef,s=>{const d=s.exists()?s.data():null;repeats=d&&Array.isArray(d.items)?d.items:[];
+    if(!repTopped&&!s.metadata.fromCache){repTopped=true;topUpRepeats()}});
+}
+const saveRepeats=()=>setDoc(repRef,{items:repeats}).catch(()=>setDot("off","Не сохранилось"));
+function seriesItem(r,d){
+  const it={id:`${r.id}-${iso(d)}`,title:r.title,day:(d.getDay()+6)%7,start:r.start||"",end:r.end||"",done:false,series:r.id};
+  if(r.kind==="task")it.kind="task";else it.color=r.color||"white";
+  if(r.remind!=null)it.remind=r.remind;
+  return it;
+}
+function materialize(r,from,to){
+  const byWeek=new Map();
+  for(let d=dayOnly(from);d<=to;d=addDays(d,1)){
+    if(!r.days.includes((d.getDay()+6)%7))continue;
+    const k=iso(monday(d));if(!byWeek.has(k))byWeek.set(k,{date:d,items:[]});byWeek.get(k).items.push(seriesItem(r,d));
+  }
+  for(const {date,items} of byWeek.values()){
+    const tw=week(monday(date));
+    if(tw.loaded){const have=new Set(tw.events.map(e=>e.id));const add=items.filter(x=>!have.has(x.id));if(add.length){tw.events.push(...add);save(tw)}}
+    else setDoc(tw.ref,{events:arrayUnion(...items),updatedAt:new Date().toISOString()},{merge:true}).catch(()=>setDot("off","Не сохранилось"));
+  }
+}
+function topUpRepeats(){
+  const limit=addDays(dayOnly(new Date()),HORIZON);let changed=false;
+  for(const r of repeats){
+    const until=new Date(r.until+"T00:00:00");
+    if(until<limit){materialize(r,addDays(until,1),limit);r.until=iso(limit);changed=true}
+  }
+  if(changed)saveRepeats();
+}
+function createSeries(p){
+  const end=p.kind==="task"||p.allDay?"":fmt(Math.min(1439,toMin(p.start)+p.dur));
+  const r={id:"r"+Math.random().toString(36).slice(2,8),title:p.title,kind:p.kind||"event",color:p.color||"white",
+    start:p.allDay?"":p.start,end,remind:p.remind??null,days:p.repeat,from:iso(p.date)};
+  const limit=addDays(dayOnly(new Date()),HORIZON);
+  materialize(r,p.date,limit);r.until=iso(limit);
+  repeats=[...repeats,r];saveRepeats();
+}
+/* remove a whole series from today on: the rule and every future copy */
+async function removeSeries(sid){
+  const r=repeats.find(x=>x.id===sid);
+  repeats=repeats.filter(x=>x.id!==sid);saveRepeats();
+  const today=dayOnly(new Date()),last=r?new Date(r.until+"T00:00:00"):addDays(today,HORIZON);
+  for(let m=monday(today);m<=last;m=addDays(m,7)){
+    const k=iso(m),keep=e=>!(e.series===sid&&addDays(m,e.day)>=today);
+    const w=weeks.get(k);
+    if(w&&w.loaded){const n=w.events.filter(keep);if(n.length!==w.events.length){w.events=n;save(w)}}
+    else{
+      try{const s=await getDoc(doc(fs,"users",uid,"weeks",k));if(!s.exists())continue;
+        const ev=(s.data().events||[]);const n=ev.filter(keep);
+        if(n.length!==ev.length)await setDoc(doc(fs,"users",uid,"weeks",k),{events:n,updatedAt:new Date().toISOString()},{merge:true})}catch(e){}
+    }
+  }
+  render();
+}
+
+/* ---------- delete by text: "удали ielts в субботу" ---------- */
+const DELW=/^\s*(?:(?:пожалуйста|плиз|можешь|давай|please|pls|can you)\s+)*(?:удали(?:ть|те)?|убери(?:те)?|убрать|отмени(?:ть|те)?|сотри|вычеркни|remove|delete|cancel)\s+/i;
+const TR={а:"a",б:"b",в:"v",г:"g",д:"d",е:"e",ж:"zh",з:"z",и:"i",й:"i",к:"k",л:"l",м:"m",н:"n",о:"o",п:"p",р:"r",с:"s",т:"t",у:"u",ф:"f",х:"h",ц:"c",ч:"ch",ш:"sh",щ:"sh",ъ:"",ы:"y",ь:"",э:"e",ю:"yu",я:"ya"};
+const translit=s=>s.replace(/[а-я]/g,c=>TR[c]??c);
+function lev(a,b){const m=a.length,n=b.length;if(!m)return n;if(!n)return m;let p=Array.from({length:n+1},(_,j)=>j);
+  for(let i=1;i<=m;i++){const c=[i];for(let j=1;j<=n;j++)c[j]=Math.min(p[j]+1,c[j-1]+1,p[j-1]+(a[i-1]===b[j-1]?0:1));p=c}return p[n]}
+const normT=x=>x.toLowerCase().replace(/ё/g,"е").replace(/[^a-zа-я0-9\s]/g," ").replace(/\s+/g," ").trim();
+function simWord(q,w){
+  if(q===w)return 1;
+  if(q.length>=3&&(w.startsWith(q)||q.startsWith(w)&&w.length>=3))return .92;
+  const a=1-lev(q,w)/Math.max(q.length,w.length),qt=translit(q),wt=translit(w);
+  const b=1-lev(qt,wt)/Math.max(qt.length,wt.length);
+  /* consonant skeleton: "айлтс" ~ "ielts", "ilets" ~ "ielts" */
+  const sk=x=>x.replace(/[aeiouy]/g,"");const qs=sk(qt),ws=sk(wt);
+  const c=qs.length>=2&&ws.length>=2?.88*(1-lev(qs,ws)/Math.max(qs.length,ws.length)):0;
+  return Math.max(a,b,c,qt.length>=3&&wt.startsWith(qt)?.9:0);
+}
+function titleScore(query,title){
+  const qs=normT(query).split(" ").filter(x=>x.length>1),ts=normT(title).split(" ").filter(Boolean);
+  if(!qs.length||!ts.length)return 0;
+  return qs.reduce((s,q)=>s+Math.max(...ts.map(w=>simWord(q,w))),0)/qs.length;
+}
+const isDeleteText=v=>DELW.test(v.trim())&&!/\n/.test(v.trim());
+let delPick=new Map(),delArmed=false;
+function delCandidates(){
+  let rest=$("q").value.trim().replace(DELW,"");
+  const all=/(^|\s)(?:все|всё|all)(?=\s|$)/i.test(rest);rest=rest.replace(/(^|\s)(?:все|всё|all)(?=\s|$)/ig," ");
+  const r=parseQuick(rest);
+  const query=r.title.replace(/^(?:дело|задач\S*|событие)\s+/i,"");
+  const today=dayOnly(new Date());
+  const span=r.hasDate?[monday(r.date)]:[0,1,2,3].map(i=>addDays(monday(today),i*7));
+  let loading=false;const out=[];
+  for(const m of span){
+    const w=week(m);if(!w.loaded){loading=true;continue}
+    for(const e of w.events){
+      const d=addDays(m,e.day);
+      if(r.hasDate&&iso(d)!==iso(r.date))continue;
+      if(!r.hasDate&&d<today)continue;
+      if(r.start&&e.start&&e.start!==r.start)continue;
+      const sc=query?titleScore(query,e.title):(r.hasDate?.7:0);
+      if(sc>=.6)out.push({e,w,date:d,score:sc});
+    }
+  }
+  out.sort((a,b)=>b.score-a.score||a.date-b.date);
+  const best=out[0]?.score??0;
+  const top=out.filter(x=>x.score>=best-.08);
+  top.sort((a,b)=>a.date-b.date||(a.e.start||"").localeCompare(b.e.start||""));
+  const rest2=out.filter(x=>!top.includes(x)).slice(0,4);
+  const list=[...top,...rest2].slice(0,8);
+  list.forEach((x,i)=>{if(!delPick.has(x.e.id))delPick.set(x.e.id,{on:all||r.hasDate?top.includes(x):(i===0),series:false})});
+  return {list,loading,query};
+}
+function delPreview(el){
+  const {list,loading}=delCandidates();
+  el.hidden=false;el.innerHTML="";el.classList.add("many","del");$("q-go").hidden=!list.length;
+  const head=document.createElement("b");
+  head.textContent=list.length?"Удалить:":(loading?"Ищу…":"Ничего похожего не нашёл");el.append(head);
+  for(const x of list){
+    const st=delPick.get(x.e.id);
+    const row=document.createElement("label");row.className="drow";
+    const cb=document.createElement("input");cb.type="checkbox";cb.checked=st.on;cb.onchange=()=>{st.on=cb.checked;delArmed=false;paintGo()};
+    const dot=document.createElement("i");if(x.e.kind==="task")dot.className="sq";else dot.style.background=colorOf(x.e.color);
+    const time=x.e.start?(x.e.kind==="task"||!x.e.end?x.e.start:`${x.e.start}–${x.e.end}`):"без времени";
+    row.append(cb,dot,document.createTextNode(`${x.e.title} · ${dateLabel(x.date)} · ${time}`));
+    if(x.e.series){
+      const b=document.createElement("button");b.type="button";b.className="allrep"+(st.series?" on":"");
+      b.textContent=st.series?"и все следующие повторы":"+ все повторы";
+      b.onclick=ev=>{ev.preventDefault();st.series=!st.series;if(st.series)st.on=true;delArmed=false;quickPreview()};
+      row.append(b);
+    }
+    el.append(row);
+  }
+  paintGo();
+}
+function paintGo(){
+  const n=[...delPick.values()].filter(x=>x.on).length;
+  $("q-go").textContent=delArmed?`Точно удалить${n>1?" "+n:""}?`:"Удалить";$("q-go").classList.add("danger");$("q-go").disabled=!n;
+}
+async function doDelete(){
+  const {list}=delCandidates();
+  const chosen=list.filter(x=>delPick.get(x.e.id)?.on);
+  const series=new Set(chosen.filter(x=>delPick.get(x.e.id).series).map(x=>x.e.series));
+  const byWeek=new Map();
+  for(const x of chosen){if(!byWeek.has(x.w.k))byWeek.set(x.w.k,{w:x.w,ids:new Set()});byWeek.get(x.w.k).ids.add(x.e.id)}
+  for(const {w,ids} of byWeek.values()){w.events=w.events.filter(e=>!ids.has(e.id));save(w)}
+  for(const sid of series)await removeSeries(sid);
+  toast(chosen.length===1&&!series.size?`Удалено: ${chosen[0].e.title}`:`Удалено: ${chosen.length}${series.size?" и будущие повторы":""}`);
+  render();
+}
+
+function withRepeat(l,fn){
+  const rp=parseRepeat(l),items=(fn(rp?rp.rest:l)||[]).filter(Boolean);
+  if(rp)items.forEach(x=>{x.repeat=rp.days;x.date=firstOccurrence(rp.days,x.allDay?null:x.start,x.hasDate?x.date:null)});
+  return items;
+}
 function quickOne(v,header){
   const r=parseQuick(v);
   if(header)r.title=r.title?header+" "+r.title.charAt(0).toLowerCase()+r.title.slice(1):header;
@@ -951,7 +1164,7 @@ function quickOne(v,header){
   }
   const allDay=r.start==null;
   const dur=r.dur??tpl?.dur??60;
-  return {title:tpl&&exact?tpl.title:r.title,date:r.date,start:r.start,dur,allDay,color:tpl?.color||"white",remind:tpl?.remind??null};
+  return {title:tpl&&exact?tpl.title:r.title,date:r.date,start:r.start,dur,allDay,color:tpl?.color||"white",remind:r.remind??tpl?.remind??null,hasDate:r.hasDate};
 }
 /* "задачи геометрия, ielts, право на сегодня 15 часов" → one task per item, sharing the date and time */
 /* exam names and other acronyms people type in lower case */
@@ -967,7 +1180,8 @@ function taskItems(v,shared={}){
   const date=withDate?withDate.date:(shared.date||parsed[0]?.date||new Date());
   const start=withTime?withTime.start:(shared.start??null);
   const fix=t=>ACRO.test(t)?t.toUpperCase():t;
-  return parsed.filter(r=>r.title).map(r=>({title:fix(r.title),date,start,allDay:start==null,dur:0,kind:"task",remind:null,color:null}));
+  const remind=parsed.find(r=>r.remind!=null)?.remind??null;
+  return parsed.filter(r=>r.title).map(r=>({title:fix(r.title),date,start,allDay:start==null,dur:0,kind:"task",remind,color:null,hasDate:!!withDate||!!shared.date}));
 }
 /* one line → one event; several lines → several. A first line with no date or time ("ielts") names the rest. */
 function quickList(){
@@ -979,10 +1193,10 @@ function quickList(){
     if(h&&h.length===0){
       const hr=parseQuick(lines[0].replace(TASKW,"$1 "));
       const shared={force:true,date:hr.hasDate?hr.date:null,start:hr.start};
-      return lines.slice(1).flatMap(l=>taskItems(l,shared)||[]);
+      return lines.slice(1).flatMap(l=>withRepeat(l,x=>taskItems(x,shared)));
     }
   }
-  if(lines.length===1){const t=taskItems(lines[0]);if(t)return t}
+  if(lines.length===1){const t=withRepeat(lines[0],x=>taskItems(x));if(t.length)return t}
   let header="";
   if(lines.length>1){const r=parseQuick(lines[0]);if(!r.hasDate&&r.start==null&&r.dur==null&&r.title){
     header=r.title;lines.shift();
@@ -990,21 +1204,26 @@ function quickList(){
     const t=templates.find(t=>t.title.toLowerCase()===header.toLowerCase());
     if(t)header=t.title;else if(ACRO.test(header))header=header.toUpperCase();
   }}
-  return lines.flatMap(l=>taskItems(l)||[quickOne(l,header)]).filter(Boolean);
+  return lines.flatMap(l=>withRepeat(l,x=>taskItems(x)||[quickOne(x,header)]));
 }
 function quickParse(){const l=quickList();return l.length===1?l[0]:null}
 function quickPreview(){
-  const list=quickList(),p=list.length===1?list[0]:null,el=$("q-prev");
+  const el=$("q-prev");
+  if(isDeleteText($("q").value)){$("q").style.height="auto";$("q").style.height=Math.min(220,$("q").scrollHeight+2)+"px";delPreview(el);return}
+  el.classList.remove("del");$("q-go").classList.remove("danger");$("q-go").textContent="Добавить";$("q-go").disabled=false;
+  const list=quickList(),p=list.length===1&&!list[0].repeat?list[0]:null;
   $("q-go").hidden=!list.length;el.hidden=!list.length;
   $("q").style.height="auto";$("q").style.height=Math.min(220,$("q").scrollHeight+2)+"px";
-  if(list.length>1){
+  if(list.length>1||(list.length===1&&list[0].repeat)){
     el.innerHTML="";el.classList.add("many");
-    const head=document.createElement("b");head.textContent=`${list.length} дел`;el.append(head);
+    const head=document.createElement("b");head.textContent=list[0].repeat&&list.length===1?"Повтор":`${list.length} дел`;el.append(head);
     for(const x of list){
       const row=document.createElement("div");const dot=document.createElement("i");
       if(x.kind==="task")dot.className="sq";else dot.style.background=colorOf(x.color);
       const time=x.allDay?"без времени":x.kind==="task"?x.start:`${x.start}–${fmt(Math.min(1439,toMin(x.start)+x.dur))}`;
-      row.append(dot,document.createTextNode(`${x.title} · ${dateLabel(x.date)} · ${time}`));el.append(row);
+      row.append(dot,document.createTextNode(x.repeat?`↻ ${repeatLabel(x.repeat)} · ${x.title} · ${time} · с ${dateLabel(x.date)}`:`${x.title} · ${dateLabel(x.date)} · ${time}`));
+      if(x.remind!=null){const b=document.createElement("em");b.textContent=x.remind?` · напомнить за ${durLabel(x.remind)}`:" · напомнить";row.append(b)}
+      el.append(row);
     }
     return;
   }
@@ -1032,9 +1251,17 @@ function showAdded(p,date){
     }
   });
 }
-$("q").addEventListener("input",quickPreview);
-$("qf").onsubmit=ev=>{ev.preventDefault();
-  const list=quickList();if(!list.length)return;
+$("q").addEventListener("input",()=>{delArmed=false;delPick.clear();quickPreview()});
+$("qf").onsubmit=async ev=>{ev.preventDefault();
+  if(isDeleteText($("q").value)){
+    if(![...delPick.values()].some(x=>x.on))return;
+    if(!delArmed){delArmed=true;paintGo();return}
+    await doDelete();delArmed=false;delPick.clear();$("q").value="";quickPreview();$("q").blur();return;
+  }
+  const all=quickList();if(!all.length)return;
+  for(const p of all.filter(x=>x.repeat))createSeries(p);
+  const list=all.filter(x=>!x.repeat);
+  if(!list.length){const f=all[0];$("q").value="";quickPreview();$("q").blur();showAdded(f,f.date);toast(`Повтор: ${repeatLabel(f.repeat)} · ${f.title}`);return}
   /* group by week so each week document is written once */
   const byWeek=new Map();
   for(const p of list){
@@ -1188,12 +1415,12 @@ onAuthStateChanged(auth,user=>{
   weeks.forEach(w=>w.unsub?.());weeks.clear();
   uid=user?user.uid:null;
   $("login").hidden=!!user;$("app").hidden=!user;$("fab").hidden=!user;
-  tplUnsub?.();tplUnsub=null;templates=[];
-  if(user){watchTemplates();checkPush();render();syncState();requestAnimationFrame(()=>requestAnimationFrame(scrollToNow))}
+  tplUnsub?.();tplUnsub=null;templates=[];repUnsub?.();repUnsub=null;repeats=[];
+  if(user){watchTemplates();watchRepeats();checkPush();render();syncState();requestAnimationFrame(()=>requestAnimationFrame(scrollToNow))}
 });
 
 /* ---------- offline copy + auto-update ---------- */
-const BUILD="20261015131720";
+const BUILD="20261015133102";
 async function checkVersion(){
   if(!navigator.onLine)return;
   try{const r=await fetch("version.txt?t="+Date.now(),{cache:"no-store"});if(!r.ok)return;
