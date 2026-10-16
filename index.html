@@ -248,6 +248,21 @@ input,select,button{font-weight:inherit}
 .allrep.on{color:#fff;background:var(--now);border-color:var(--now)}
 .quick button.danger{background:var(--now);color:#fff}
 .qprev em{font-style:normal;color:var(--muted)}
+
+/* task stack editor */
+.tstack{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;touch-action:manipulation}
+.sh-head{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.sh-head b{font-weight:800}
+.srows{display:flex;flex-direction:column;gap:6px;max-height:34vh;overflow:auto}
+.srow{display:flex;align-items:center;gap:8px}
+.srow input{flex:1;padding:8px 10px}
+.srow.done input{color:var(--dim);text-decoration:line-through}
+.srow.done .tck{background:var(--fg);box-shadow:none}
+.sx{flex:none;width:32px;height:32px;border-radius:8px;color:var(--muted);font-size:1.2rem;line-height:1}
+.sx:hover{color:var(--now);background:var(--field)}
+.sadd{display:flex;gap:8px}
+.sadd input{flex:1}
+.sadd button{flex:none;width:42px;border-radius:8px;background:var(--fg);color:var(--bg);font-size:1.3rem;font-weight:800}
 body.daymode .tabs{display:grid}
 .seg{display:flex;background:var(--field);border:1px solid var(--line-h);border-radius:9px;padding:2px;margin-left:auto}
 .seg button{padding:5px 9px;border-radius:7px;font-size:.78rem;color:var(--muted)}
@@ -419,6 +434,14 @@ function colEl(w,start,i,h){
         r.onclick=()=>openEditor(e,w,start);g.append(r);
       }
       const tm=document.createElement("span");tm.className="tt";tm.textContent=it.e.start;g.prepend(tm);
+      /* hold the stack ≈0.5 s → edit the whole list: time for all, rename, add, remove */
+      let lp=null,fired=false;
+      g.addEventListener("pointerdown",ev=>{if(ev.target.closest(".tck")||ev.button>0)return;fired=false;
+        lp={x:ev.clientX,y:ev.clientY,t:setTimeout(()=>{fired=true;lp=null;navigator.vibrate?.(10);openStackEditor(w,start,i,it.e.start,it.e.__group)},500)}});
+      g.addEventListener("pointermove",ev=>{if(lp&&Math.hypot(ev.clientX-lp.x,ev.clientY-lp.y)>8){clearTimeout(lp.t);lp=null}});
+      ["pointerup","pointercancel","pointerleave"].forEach(tp=>g.addEventListener(tp,()=>{if(lp){clearTimeout(lp.t);lp=null}}));
+      g.addEventListener("click",ev=>{if(fired){ev.stopPropagation();ev.preventDefault();fired=false}},true);
+      g.addEventListener("contextmenu",ev=>ev.preventDefault());
       col.append(g);continue;
     }
     const e=it.e,dur=it.en-it.s;
@@ -1056,6 +1079,126 @@ async function removeSeries(sid){
   render();
 }
 
+/* ---------- copy / move unfinished tasks: "скопируй задачи на завтра", "перенеси невыполненные задачи на понедельник" ---------- */
+const COPYV=/(?:^|\s)(скопир\S*|копир\S*|дублир\S*|продублир\S*|перенес\S*|перенос\S*|перекин\S*|перетащ\S*|сдвин\S*|copy|duplicate|move|carry\s+over|push)(?=\s|$)/i;
+const TASKN=/(?:^|\s)(?:задач\S*|дела|tasks?|to-?dos?)(?=\s|$)/i;
+const isCopyText=v=>{const t=" "+v.toLowerCase().replace(/ё/g,"е").trim()+" ";return !/\n/.test(v.trim())&&COPYV.test(t)&&TASKN.test(t)};
+function copyPlan(){
+  let t=" "+$("q").value.toLowerCase().replace(/ё/g,"е").trim()+" ";
+  const verb=t.match(COPYV)[1];
+  const move=/^(?:перенес|перенос|перекин|перетащ|сдвин|move|carry|push)/.test(verb);
+  t=t.replace(COPYV," ").replace(TASKN," ")
+     .replace(/\s(?:все|всё|мои|незаверш\S*|невыполн\S*|несделан\S*|недоделан\S*|оставш\S*|открыт\S*|сегодняшн\S*|unfinished|undone|incomplete|remaining|open|all|my)(?=\s)/g," ");
+  /* "с пятницы на понедельник", "from today to monday", or just "на завтра" */
+  let srcTxt="",dstTxt=t,m;
+  if((m=t.match(/\s(?:с|со|из|from)\s(.+?)\s(?:на|в|to|into|for)\s(.+)$/)))[srcTxt,dstTxt]=[m[1],m[2]];
+  else if((m=t.match(/^(.*?)\s(?:на|в|to|into|for)\s(.+)$/))){dstTxt=m[2];srcTxt=m[1].replace(/\s(?:с|со|из|from)\s/," ")}
+  const today=dayOnly(new Date());
+  const sp=srcTxt.trim()?parseQuick(srcTxt):null;
+  let src=sp&&sp.hasDate?dayOnly(sp.date):today;
+  /* "с пятницы" means the last Friday, not the next one */
+  if(src>today&&new RegExp(`(?:${WD_RE})`,"i").test(srcTxt))src=addDays(src,-7);
+  const dp=parseQuick(dstTxt);
+  let dst=dp.hasDate?dayOnly(dp.date):addDays(src,1);
+  if(dst<=src&&dp.hasDate&&new RegExp(`(?:${WD_RE})`,"i").test(dstTxt))dst=addDays(dst,7);
+  return {move,src,dst};
+}
+function copyItems(){
+  const {move,src,dst}=copyPlan();
+  const sw=week(monday(src)),dw=week(monday(dst));
+  if(!sw.loaded||!dw.loaded)return {move,src,dst,list:null};
+  const sd=(src.getDay()+6)%7,dd=(dst.getDay()+6)%7;
+  const there=new Set(dw.events.filter(e=>e.day===dd&&e.kind==="task").map(e=>e.title.toLowerCase()+"|"+(e.start||"")));
+  const list=sw.events.filter(e=>e.day===sd&&e.kind==="task"&&!e.done&&!there.has(e.title.toLowerCase()+"|"+(e.start||"")))
+    .sort((a,b)=>(a.start||"99").localeCompare(b.start||"99"));
+  return {move,src,dst,sw,dw,dd,list};
+}
+function copyPreview(el){
+  const c=copyItems();
+  el.hidden=false;el.innerHTML="";el.classList.add("many");el.classList.remove("del");
+  const head=document.createElement("b");
+  const verb=c.move?"Перенести":"Скопировать";
+  head.textContent=c.list==null?"Ищу задачи…":c.list.length?`${verb} на ${dateLabel(c.dst)}:`:`На ${dateLabel(c.src)} нет незавершённых задач`;
+  el.append(head);
+  for(const e of c.list||[]){const row=document.createElement("div");const dot=document.createElement("i");dot.className="sq";
+    row.append(dot,document.createTextNode(`${e.title} · ${e.start||"без времени"}`));el.append(row)}
+  const go=$("q-go");go.hidden=!(c.list&&c.list.length);go.classList.remove("danger");go.disabled=false;
+  go.textContent=c.list&&c.list.length?`${verb} ${c.list.length}`:"Добавить";
+}
+function doCopy(){
+  const c=copyItems();if(!c.list||!c.list.length)return;
+  const items=c.list.map(e=>{const it={id:Math.random().toString(36).slice(2,10),title:e.title,kind:"task",day:c.dd,start:e.start||"",end:"",done:false};
+    if(e.remind!=null)it.remind=e.remind;return it});
+  if(c.dw.loaded){c.dw.events.push(...items);save(c.dw)}
+  if(c.move){const ids=new Set(c.list.map(e=>e.id));c.sw.events=c.sw.events.filter(e=>!ids.has(e.id));if(c.sw!==c.dw)save(c.sw);else save(c.sw)}
+  toast(`${c.move?"Перенесено":"Скопировано"} на ${dateLabel(c.dst)}: ${items.length}`);
+  showAdded({start:items.find(x=>x.start)?.start||null},c.dst);
+}
+
+/* ---------- task stack editor: hold a stack to change its time or its tasks ---------- */
+function openStackEditor(w,wStart,day,time,list){
+  const date=addDays(wStart,day);
+  const rows=list.map(e=>({id:e.id,title:e.title,done:!!e.done,remind:e.remind,series:e.series,del:false}));
+  let start=time;
+  const m=$("modal");
+  m.innerHTML=`<div class="back" id="bk"><form class="sheet stacked" id="sf" autocomplete="off">
+    <div class="sh-head"><b>Задачи · ${dateLabel(date)}</b><button type="button" class="link" id="sf-alld">Без времени</button></div>
+    <label class="fld"><span>Время для всех</span><input id="sf-time" readonly aria-label="Время"></label>
+    <div class="picker" id="sf-pick"></div>
+    <div class="srows" id="sf-rows"></div>
+    <div class="sadd"><input id="sf-new" placeholder="Новая задача" aria-label="Новая задача"><button type="button" id="sf-addbtn" aria-label="Добавить задачу">+</button></div>
+    <div class="acts">
+      <button type="button" class="link" id="sf-cancel">Отмена</button>
+      <button type="button" class="link" id="sf-delall">Удалить все</button>
+      <button type="submit" class="save">Сохранить</button>
+    </div>
+  </form></div>`;
+  let allDay=false;
+  const paintTime=()=>{$("sf-time").value=allDay?"без времени":start;$("sf-pick").hidden=allDay;$("sf-alld").textContent=allDay?"Со временем":"Без времени"};
+  const buildPick=()=>{
+    const p=$("sf-pick");p.textContent="";const cur=toMin(start);let hh=Math.floor(cur/60),mm=cur%60;
+    const mins=Array.from({length:12},(_,i)=>i*5);const apply=()=>{start=fmt(hh*60+mm);paintTime()};
+    const c=document.createElement("span");c.className="colon";c.textContent=":";
+    p.append(makeWheel(Array.from({length:24},(_,i)=>pad(i)),hh,i=>{hh=i;apply()},"h"),c,
+             makeWheel(mins.map(pad),Math.round(mm/5)%12,i=>{mm=mins[i];apply()},"m"));
+  };
+  const paintRows=()=>{
+    const box=$("sf-rows");box.textContent="";
+    rows.forEach((r,i)=>{if(r.del)return;
+      const row=document.createElement("div");row.className="srow"+(r.done?" done":"");
+      const ck=document.createElement("button");ck.type="button";ck.className="tck";ck.onclick=()=>{r.done=!r.done;paintRows()};
+      const inp=document.createElement("input");inp.value=r.title;inp.oninput=()=>{r.title=inp.value};
+      const x=document.createElement("button");x.type="button";x.className="sx";x.textContent="×";x.setAttribute("aria-label","Убрать задачу");
+      x.onclick=()=>{r.del=true;paintRows()};
+      row.append(ck,inp,x);box.append(row)});
+  };
+  const addNew=()=>{const v=$("sf-new").value.trim();if(!v)return;
+    for(const part of v.split(/[,;]/).map(x=>x.trim()).filter(Boolean))rows.push({id:null,title:ACRO.test(part)?part.toUpperCase():part,done:false,del:false});
+    $("sf-new").value="";paintRows();$("sf-new").focus()};
+  $("sf-addbtn").onclick=addNew;
+  $("sf-new").addEventListener("keydown",ev=>{if(ev.key==="Enter"){ev.preventDefault();addNew()}});
+  $("sf-time").onclick=()=>{if(allDay)return;const el=$("sf-time");if(el.readOnly){el.readOnly=false;el.value=start;el.focus();el.select()}};
+  $("sf-time").addEventListener("blur",()=>{const el=$("sf-time");if(el.readOnly)return;const v=parseTime(el.value);if(v)start=v;el.readOnly=true;paintTime();buildPick()});
+  $("sf-alld").onclick=()=>{allDay=!allDay;paintTime()};
+  const close=()=>{m.innerHTML=""};
+  $("sf-cancel").onclick=close;
+  $("bk").onclick=ev=>{if(ev.target.id==="bk")close()};
+  let armed=false;
+  $("sf-delall").onclick=()=>{if(!armed){armed=true;$("sf-delall").textContent="Точно все?";return}
+    const ids=new Set(list.map(e=>e.id));w.events=w.events.filter(e=>!ids.has(e.id));save(w);render();close()};
+  $("sf").onsubmit=ev=>{ev.preventDefault();addNew();
+    const t=allDay?"":start;
+    const keep=new Map(rows.filter(r=>r.id&&!r.del&&r.title.trim()).map(r=>[r.id,r]));
+    const gone=new Set(rows.filter(r=>r.id&&(r.del||!r.title.trim())).map(r=>r.id));
+    w.events=w.events.filter(e=>!gone.has(e.id)).map(e=>{const r=keep.get(e.id);if(!r)return e;
+      return {...e,title:r.title.trim(),done:r.done,start:t}});
+    for(const r of rows.filter(r=>!r.id&&!r.del&&r.title.trim()))
+      w.events.push({id:Math.random().toString(36).slice(2,10),title:r.title.trim(),kind:"task",day,start:t,end:"",done:r.done});
+    save(w);render();close();
+  };
+  paintTime();buildPick();paintRows();
+}
+
 /* ---------- delete by text: "удали ielts в субботу" ---------- */
 const DELW=/^\s*(?:(?:пожалуйста|плиз|можешь|давай|please|pls|can you)\s+)*(?:удали(?:ть|те)?|убери(?:те)?|убрать|отмени(?:ть|те)?|сотри|вычеркни|remove|delete|cancel)\s+/i;
 const TR={а:"a",б:"b",в:"v",г:"g",д:"d",е:"e",ж:"zh",з:"z",и:"i",й:"i",к:"k",л:"l",м:"m",н:"n",о:"o",п:"p",р:"r",с:"s",т:"t",у:"u",ф:"f",х:"h",ц:"c",ч:"ch",ш:"sh",щ:"sh",ъ:"",ы:"y",ь:"",э:"e",ю:"yu",я:"ya"};
@@ -1212,6 +1355,7 @@ function quickList(){
 function quickParse(){const l=quickList();return l.length===1?l[0]:null}
 function quickPreview(){
   const el=$("q-prev");
+  if(isCopyText($("q").value)){$("q").style.height="auto";$("q").style.height=Math.min(220,$("q").scrollHeight+2)+"px";copyPreview(el);return}
   if(isDeleteText($("q").value)){$("q").style.height="auto";$("q").style.height=Math.min(220,$("q").scrollHeight+2)+"px";delPreview(el);return}
   el.classList.remove("del");$("q-go").classList.remove("danger");$("q-go").textContent="Добавить";$("q-go").disabled=false;
   const list=quickList(),p=list.length===1&&!list[0].repeat?list[0]:null;
@@ -1257,6 +1401,7 @@ function showAdded(p,date){
 }
 $("q").addEventListener("input",()=>{delArmed=false;delPick.clear();quickPreview()});
 $("qf").onsubmit=async ev=>{ev.preventDefault();
+  if(isCopyText($("q").value)){doCopy();$("q").value="";quickPreview();$("q").blur();return}
   if(isDeleteText($("q").value)){
     if(![...delPick.values()].some(x=>x.on))return;
     if(!delArmed){delArmed=true;paintGo();return}
@@ -1424,7 +1569,7 @@ onAuthStateChanged(auth,user=>{
 });
 
 /* ---------- offline copy + auto-update ---------- */
-const BUILD="20261015133416";
+const BUILD="20261016191307";
 async function checkVersion(){
   if(!navigator.onLine)return;
   try{const r=await fetch("version.txt?t="+Date.now(),{cache:"no-store"});if(!r.ok)return;
