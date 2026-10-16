@@ -263,6 +263,16 @@ input,select,button{font-weight:inherit}
 .sadd{display:flex;gap:8px}
 .sadd input{flex:1}
 .sadd button{flex:none;width:42px;border-radius:8px;background:var(--fg);color:var(--bg);font-size:1.3rem;font-weight:800}
+
+/* move tasks */
+.mv{display:flex;flex-direction:column;gap:10px}
+.mvchips{display:flex;gap:6px;flex-wrap:wrap}
+.mvchips button{padding:6px 10px;border-radius:8px;border:1px solid var(--line-h);font-size:.8rem;color:var(--muted)}
+.mvchips button.on{background:var(--fg);color:var(--bg);border-color:var(--fg)}
+.srow.pick{cursor:pointer;padding:6px 2px}
+.srow.pick input{width:18px;height:18px;flex:none;padding:0;accent-color:var(--fg)}
+.srow.pick.done span{color:var(--dim);text-decoration:line-through}
+.allday-task{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
 body.daymode .tabs{display:grid}
 .seg{display:flex;background:var(--field);border:1px solid var(--line-h);border-radius:9px;padding:2px;margin-left:auto}
 .seg button{padding:5px 9px;border-radius:7px;font-size:.78rem;color:var(--muted)}
@@ -464,7 +474,16 @@ function alldayEls(w,start,i){return w.events.filter(x=>x.day===i&&!x.start).map
     const ck=document.createElement("button");ck.className="tck";ck.setAttribute("aria-label",e.done?"Снять отметку":"Готово");
     ck.onclick=ev=>{ev.stopPropagation();e.done=!e.done;save(w);render()};
     const n=document.createElement("span");n.className="n";n.textContent=e.title;
-    c.append(ck,n);c.onclick=()=>openEditor(e,w,start);return c;
+    c.append(ck,n);c.onclick=()=>openEditor(e,w,start);
+    let lp=null,fired=false;
+    c.addEventListener("pointerdown",ev=>{if(ev.target.closest(".tck")||ev.button>0)return;fired=false;
+      lp={x:ev.clientX,y:ev.clientY,t:setTimeout(()=>{fired=true;lp=null;navigator.vibrate?.(10);
+        openStackEditor(w,start,i,"",w.events.filter(x=>x.day===i&&x.kind==="task"&&!x.start))},500)}});
+    c.addEventListener("pointermove",ev=>{if(lp&&Math.hypot(ev.clientX-lp.x,ev.clientY-lp.y)>8){clearTimeout(lp.t);lp=null}});
+    ["pointerup","pointercancel","pointerleave"].forEach(tp=>c.addEventListener(tp,()=>{if(lp){clearTimeout(lp.t);lp=null}}));
+    c.addEventListener("click",ev=>{if(fired){ev.stopPropagation();ev.preventDefault();fired=false}},true);
+    c.addEventListener("contextmenu",ev=>ev.preventDefault());
+    return c;
   }
   const c=document.createElement("button");c.className="allday"+(e.done?" done":"");c.style.setProperty("--c",colorOf(e.color));c.textContent=e.title;c.onclick=()=>openEditor(e,w,start);return c})}
 /* little colored dots: one per event, in time order */
@@ -1139,21 +1158,30 @@ function doCopy(){
 function openStackEditor(w,wStart,day,time,list){
   const date=addDays(wStart,day);
   const rows=list.map(e=>({id:e.id,title:e.title,done:!!e.done,remind:e.remind,series:e.series,del:false}));
-  let start=time;
+  let start=time||"09:00";
   const m=$("modal");
   m.innerHTML=`<div class="back" id="bk"><form class="sheet stacked" id="sf" autocomplete="off">
     <div class="sh-head"><b>Задачи · ${dateLabel(date)}</b><button type="button" class="link" id="sf-alld">Без времени</button></div>
     <label class="fld"><span>Время для всех</span><input id="sf-time" readonly aria-label="Время"></label>
     <div class="picker" id="sf-pick"></div>
+    <div id="sf-mv" class="mv" hidden>
+      <div class="mvchips"><button type="button" data-d="1">Завтра</button><button type="button" data-d="2">Послезавтра</button><button type="button" data-d="7">Через неделю</button></div>
+      <div class="row">
+        <label class="fld"><span>День</span><input id="mv-date" readonly aria-label="День"></label>
+        <label class="fld"><span>Время</span><input id="mv-time" readonly aria-label="Время"></label>
+      </div>
+      <div class="picker" id="mv-pick"></div>
+    </div>
     <div class="srows" id="sf-rows"></div>
     <div class="sadd"><input id="sf-new" placeholder="Новая задача" aria-label="Новая задача"><button type="button" id="sf-addbtn" aria-label="Добавить задачу">+</button></div>
     <div class="acts">
       <button type="button" class="link" id="sf-cancel">Отмена</button>
       <button type="button" class="link" id="sf-delall">Удалить все</button>
-      <button type="submit" class="save">Сохранить</button>
+      <button type="button" class="link" id="sf-move">Перенести</button>
+      <button type="submit" class="save" id="sf-save">Сохранить</button>
     </div>
   </form></div>`;
-  let allDay=false;
+  let allDay=!time;
   const paintTime=()=>{$("sf-time").value=allDay?"без времени":start;$("sf-pick").hidden=allDay;$("sf-alld").textContent=allDay?"Со временем":"Без времени"};
   const buildPick=()=>{
     const p=$("sf-pick");p.textContent="";const cur=toMin(start);let hh=Math.floor(cur/60),mm=cur%60;
@@ -1195,6 +1223,61 @@ function openStackEditor(w,wStart,day,time,list){
     for(const r of rows.filter(r=>!r.id&&!r.del&&r.title.trim()))
       w.events.push({id:Math.random().toString(36).slice(2,10),title:r.title.trim(),kind:"task",day,start:t,end:"",done:r.done});
     save(w);render();close();
+  };
+  /* move mode: pick tasks, pick a day and a time, move them */
+  let moving=false,mvDate=addDays(date,1),mvTime=time||"",mvActive="date";
+  const sel=new Set(rows.filter(r=>r.id&&!r.done).map(r=>r.id));
+  const paintMove=()=>{
+    $("mv-date").value=dateLabel(mvDate);$("mv-time").value=mvTime||"без времени";
+    $("mv-date").classList.toggle("act",mvActive==="date");$("mv-time").classList.toggle("act",mvActive==="time");
+    document.querySelectorAll(".mvchips button").forEach(b=>b.classList.toggle("on",iso(addDays(date,+b.dataset.d))===iso(mvDate)));
+    $("sf-save").textContent=`Перенести ${sel.size}`;$("sf-save").disabled=!sel.size;
+  };
+  const buildMovePick=()=>{
+    const p=$("mv-pick");p.textContent="";
+    if(mvActive==="date"){
+      const base=dayOnly(new Date()),days=[];for(let k=0;k<180;k++)days.push(addDays(base,k));
+      const idx=Math.max(0,Math.round((mvDate-base)/864e5));
+      p.append(makeWheel(days.map(dateLabel),idx,k=>{mvDate=days[k];paintMove()}));
+    }else{
+      const opts=["без времени",...Array.from({length:96},(_,k)=>fmt(k*15))];
+      const cur=mvTime?Math.round(toMin(mvTime)/15)+1:0;
+      p.append(makeWheel(opts,cur,k=>{mvTime=k?opts[k]:"";paintMove()}));
+    }
+  };
+  const paintSelRows=()=>{
+    const box=$("sf-rows");box.textContent="";
+    rows.forEach(r=>{if(!r.id||r.del)return;
+      const row=document.createElement("label");row.className="srow pick"+(r.done?" done":"");
+      const cb=document.createElement("input");cb.type="checkbox";cb.checked=sel.has(r.id);
+      cb.onchange=()=>{cb.checked?sel.add(r.id):sel.delete(r.id);paintMove()};
+      const n=document.createElement("span");n.textContent=r.title;row.append(cb,n);box.append(row)});
+  };
+  const setMoving=on=>{
+    moving=on;
+    for(const id of ["sf-time","sf-pick","sf-delall","sf-alld"]){const el=$(id);(el.closest(".fld")||el).hidden=on}
+    document.querySelector(".sadd").hidden=on;$("sf-mv").hidden=!on;
+    $("sf-move").textContent=on?"Назад":"Перенести";
+    if(on){paintSelRows();paintMove();buildMovePick()}else{$("sf-save").textContent="Сохранить";$("sf-save").disabled=false;paintRows();paintTime()}
+  };
+  $("sf-move").onclick=()=>setMoving(!moving);
+  document.querySelector(".mvchips").onclick=ev=>{const b=ev.target.closest("button");if(!b)return;mvDate=addDays(date,+b.dataset.d);mvActive="date";paintMove();buildMovePick()};
+  $("mv-date").onclick=ev=>{ev.preventDefault();mvActive="date";paintMove();buildMovePick()};
+  $("mv-time").onclick=ev=>{ev.preventDefault();mvActive="time";paintMove();buildMovePick()};
+  const save0=$("sf").onsubmit;
+  $("sf").onsubmit=ev=>{
+    if(!moving)return save0(ev);
+    ev.preventDefault();if(!sel.size)return;
+    const tw=week(monday(mvDate)),tday=(mvDate.getDay()+6)%7;
+    const moved=w.events.filter(e=>sel.has(e.id)).map(e=>{const r=rows.find(x=>x.id===e.id);
+      const it={...e,title:(r&&r.title.trim())||e.title,day:tday,start:mvTime,end:"",done:false};delete it.series;return it});
+    w.events=w.events.filter(e=>!sel.has(e.id));
+    if(tw===w){w.events.push(...moved);save(w)}
+    else{save(w);
+      if(tw.loaded){tw.events.push(...moved);save(tw)}
+      else setDoc(tw.ref,{events:arrayUnion(...moved),updatedAt:new Date().toISOString()},{merge:true}).catch(()=>setDot("off","Не сохранилось"))}
+    close();toast(`Перенесено на ${dateLabel(mvDate)}${mvTime?" "+mvTime:""}: ${moved.length}`);
+    showAdded({start:mvTime||null},mvDate);
   };
   paintTime();buildPick();paintRows();
 }
@@ -1569,7 +1652,7 @@ onAuthStateChanged(auth,user=>{
 });
 
 /* ---------- offline copy + auto-update ---------- */
-const BUILD="20261016191307";
+const BUILD="20261016191737";
 async function checkVersion(){
   if(!navigator.onLine)return;
   try{const r=await fetch("version.txt?t="+Date.now(),{cache:"no-store"});if(!r.ok)return;
